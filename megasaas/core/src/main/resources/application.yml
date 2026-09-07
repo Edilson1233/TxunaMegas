@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: megasaas-core
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/megasaas}
+    username: ${DATABASE_USERNAME:megasaas}
+    password: ${DATABASE_PASSWORD:megasaas}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${CORE_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+megasaas:
+  core:
+    internal-api-token: ${CORE_INTERNAL_API_TOKEN:}

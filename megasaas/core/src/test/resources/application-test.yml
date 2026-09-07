@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    enabled: false
+  datasource:
+    url: jdbc:h2:mem:megasaas_core_test;MODE=PostgreSQL
+    username: sa
+    password:
+
+megasaas:
+  core:
+    internal-api-token: test-token
