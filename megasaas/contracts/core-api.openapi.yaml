@@ -1,0 +1,593 @@
+openapi: 3.1.0
+info:
+  title: MegaSaaS Core Internal API
+  version: 0.1.0
+  description: >
+    Contrato REST inicial entre o Node.js Automation/Integration Gateway e o
+    Spring Boot Core/System of Record. O Node continua dono das integracoes
+    externas; o Spring Boot passa a ser dono do estado persistente de dominio.
+servers:
+  - url: http://localhost:8080
+    description: Spring Boot local
+security:
+  - serviceBearerAuth: []
+tags:
+  - name: Tenant Context
+  - name: Payments
+  - name: USSD
+  - name: Audit
+
+paths:
+  /internal/v1/tenant-context/whatsapp-instances/{instanceId}:
+    get:
+      tags: [Tenant Context]
+      summary: Resolve o tenant dono de uma instancia WhatsApp.
+      operationId: resolveTenantForWhatsappInstance
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant resolvido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantContextResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/payment-claims:
+    post:
+      tags: [Payments]
+      summary: Regista uma alegacao de pagamento recebida via WhatsApp.
+      description: >
+        O Node envia a mensagem parseada do WhatsApp. O Spring persiste a
+        alegacao, aplica idempotencia e cruza com eventual SMS real orfa.
+        Texto de WhatsApp nunca deve confirmar pagamento sozinho.
+      operationId: registerPaymentClaim
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentClaimRequest"
+      responses:
+        "200":
+          description: Alegacao aceite, verificada ou rejeitada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentDecisionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Chave de idempotencia ou comprovativo ja usado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /internal/v1/payment-confirmations/sms:
+    post:
+      tags: [Payments]
+      summary: Regista SMS real reportada pelo dispositivo de automacao.
+      description: >
+        O Node envia a SMS real recebida pelo Tasker/MacroDroid e o resultado
+        do parser tecnico. O Spring persiste a confirmacao, aplica
+        idempotencia e cruza com eventual alegacao pendente.
+      operationId: registerSmsPaymentConfirmation
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmsPaymentConfirmationRequest"
+      responses:
+        "200":
+          description: Confirmacao aceite, verificada, orfa ou rejeitada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentDecisionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Transacao ja usada ou inconsistente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /internal/v1/ussd-commands:
+    post:
+      tags: [USSD]
+      summary: Regista uma intencao de comando USSD criada pelo Node.
+      description: >
+        Nesta fase inicial, o Node ainda pode executar a fila local. Este
+        endpoint permite ao Spring auditar e persistir o comando antes da
+        execucao ou tornar-se dono do ciclo de vida quando BullMQ entrar.
+      operationId: registerUssdCommand
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UssdCommandCreateRequest"
+      responses:
+        "201":
+          description: Comando registado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UssdCommandResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Comando duplicado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/v1/ussd-commands/{commandId}/ack:
+    post:
+      tags: [USSD]
+      summary: Regista o resultado de execucao USSD.
+      operationId: ackUssdCommand
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UssdCommandAckRequest"
+      responses:
+        "200":
+          description: ACK registado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UssdCommandResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: ACK invalido para o estado atual do comando.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/v1/audit-events:
+    post:
+      tags: [Audit]
+      summary: Regista um evento operacional produzido pelo gateway Node.
+      operationId: appendAuditEvent
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditEventRequest"
+      responses:
+        "202":
+          description: Evento aceite.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    serviceBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-service-token
+
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Identificador para tracing entre Node, Spring e logs.
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+      description: Chave unica por operacao externa para permitir retry seguro.
+
+  responses:
+    BadRequest:
+      description: Payload invalido.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Credencial interna invalida ou ausente.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Recurso nao encontrado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unprocessable:
+      description: Payload valido em JSON, mas rejeitado por regra de dominio.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    TenantContextResponse:
+      type: object
+      required: [tenantId, whatsappInstanceId, status]
+      properties:
+        tenantId:
+          type: string
+        whatsappInstanceId:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+
+    PaymentClaimRequest:
+      type: object
+      required:
+        - tenantId
+        - whatsappInstanceId
+        - contextKey
+        - chatType
+        - chatId
+        - messageId
+        - receivedAt
+        - parsedPayment
+      properties:
+        tenantId:
+          type: string
+        whatsappInstanceId:
+          type: string
+        contextKey:
+          type: string
+        chatType:
+          $ref: "#/components/schemas/ChatType"
+        chatId:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        messageId:
+          type: string
+        receivedAt:
+          type: string
+          format: date-time
+        rawMessageText:
+          type: string
+          nullable: true
+        parsedPayment:
+          $ref: "#/components/schemas/ParsedPayment"
+
+    SmsPaymentConfirmationRequest:
+      type: object
+      required:
+        - tenantId
+        - deviceId
+        - provider
+        - externalTransactionId
+        - amount
+        - rawSms
+        - reportedAt
+        - parsedPayment
+      properties:
+        tenantId:
+          type: string
+        deviceId:
+          type: string
+        provider:
+          $ref: "#/components/schemas/PaymentProvider"
+        externalTransactionId:
+          type: string
+        amount:
+          type: number
+          format: double
+          minimum: 0
+        rawSms:
+          type: string
+        reportedAt:
+          type: string
+          format: date-time
+        parsedPayment:
+          $ref: "#/components/schemas/ParsedPayment"
+
+    ParsedPayment:
+      type: object
+      required:
+        - matched
+        - provider
+        - type
+        - parserVersion
+        - source
+      properties:
+        matched:
+          type: boolean
+        provider:
+          $ref: "#/components/schemas/PaymentProvider"
+        type:
+          $ref: "#/components/schemas/TransactionType"
+        externalTransactionId:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: double
+          nullable: true
+        fee:
+          type: number
+          format: double
+          nullable: true
+        counterpartyPhone:
+          type: string
+          nullable: true
+        counterpartyName:
+          type: string
+          nullable: true
+        destinationNumber:
+          type: string
+          nullable: true
+        balanceAfter:
+          type: number
+          format: double
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+        parserVersion:
+          type: string
+        source:
+          $ref: "#/components/schemas/TransactionSource"
+
+    PaymentDecisionResponse:
+      type: object
+      required: [decision, checkedAt]
+      properties:
+        decision:
+          $ref: "#/components/schemas/PaymentDecision"
+        reason:
+          $ref: "#/components/schemas/PaymentDecisionReason"
+        tenantId:
+          type: string
+        orderId:
+          type: string
+          format: uuid
+          nullable: true
+        paymentId:
+          type: string
+          format: uuid
+          nullable: true
+        contextKey:
+          type: string
+          nullable: true
+          description: Contexto de conversa que o Node deve avancar quando uma confirmacao SMS verifica uma claim.
+        externalTransactionId:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: double
+          nullable: true
+        destinationNumber:
+          type: string
+          nullable: true
+        ussdCommand:
+          allOf:
+            - $ref: "#/components/schemas/UssdCommandResponse"
+          nullable: true
+        checkedAt:
+          type: string
+          format: date-time
+
+    UssdCommandCreateRequest:
+      type: object
+      required:
+        - tenantId
+        - deviceId
+        - orderId
+        - paymentId
+        - externalTransactionId
+        - destinationNumber
+        - amount
+      properties:
+        tenantId:
+          type: string
+        deviceId:
+          type: string
+        orderId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        externalTransactionId:
+          type: string
+        destinationNumber:
+          type: string
+        amount:
+          type: number
+          format: double
+          minimum: 0
+
+    UssdCommandAckRequest:
+      type: object
+      required: [success, acknowledgedAt]
+      properties:
+        success:
+          type: boolean
+        acknowledgedAt:
+          type: string
+          format: date-time
+        providerReference:
+          type: string
+          nullable: true
+        details:
+          type: string
+          nullable: true
+        rawOutput:
+          type: string
+          nullable: true
+
+    UssdCommandResponse:
+      type: object
+      required:
+        - commandId
+        - tenantId
+        - orderId
+        - paymentId
+        - status
+        - createdAt
+      properties:
+        commandId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+        orderId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/UssdCommandStatus"
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditEventRequest:
+      type: object
+      required: [tenantId, eventType, occurredAt]
+      properties:
+        tenantId:
+          type: string
+        actorType:
+          type: string
+          enum: [SYSTEM, USER, DEVICE, CUSTOMER]
+        actorId:
+          type: string
+          nullable: true
+        eventType:
+          type: string
+        resourceType:
+          type: string
+          nullable: true
+        resourceId:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        correlationId:
+          type: string
+          nullable: true
+
+    TenantStatus:
+      type: string
+      enum: [ACTIVE, SUSPENDED, DISABLED]
+    ChatType:
+      type: string
+      enum: [PRIVATE, GROUP]
+    PaymentProvider:
+      type: string
+      enum: [MPESA, EMOLA]
+    TransactionType:
+      type: string
+      enum: [RECEIVED, TRANSFER_SENT, UNKNOWN]
+    TransactionSource:
+      type: string
+      enum: [WHATSAPP_TEXT, TASKER_SMS]
+    PaymentDecision:
+      type: string
+      enum:
+        - PENDING_VERIFICATION
+        - VERIFIED
+        - REJECTED
+        - ORPHAN_CONFIRMATION_ACCEPTED
+    PaymentDecisionReason:
+      type: string
+      enum:
+        - NOT_FOUND
+        - AMOUNT_MISMATCH
+        - ALREADY_USED
+        - INVALID_SOURCE
+        - INVALID_TRANSACTION_TYPE
+        - TENANT_DISABLED
+        - DEVICE_NOT_AUTHORIZED
+    UssdCommandStatus:
+      type: string
+      enum: [PENDING, DISPATCHED, COMPLETED, FAILED, EXPIRED, CANCELLED]
