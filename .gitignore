@@ -1,0 +1,28 @@
+@'
+# secrets
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# node
+node_modules/
+**/node_modules/
+coverage/
+dist/
+
+# spring/java
+target/
+**/target/
+
+# runtime/session data
+storage/
+megasaas/storage/
+
+# logs/temp
+*.log
+*.tmp
+
+# accidental root lockfile; keep megasaas/package-lock.json
+/package-lock.json
+'@ | Set-Content -Encoding UTF8 .gitignore
