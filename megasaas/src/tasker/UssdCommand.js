@@ -10,6 +10,7 @@ export const UssdCommandStatus = Object.freeze({
   DISPATCHED: 'DISPATCHED',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
+  TIMED_OUT: 'TIMED_OUT',
 });
 
 export class UssdCommand {
@@ -24,6 +25,8 @@ export class UssdCommand {
     status = UssdCommandStatus.PENDING,
     createdAt = new Date().toISOString(),
     dispatchedAt = null,
+    attemptCount = 0,
+    lastError = null,
   }) {
     if (!id) throw new TypeError('[UssdCommand] id é obrigatório');
     if (!transactionId) throw new TypeError('[UssdCommand] transactionId é obrigatório');
@@ -39,5 +42,7 @@ export class UssdCommand {
     this.status = status;
     this.createdAt = createdAt;
     this.dispatchedAt = dispatchedAt;
+    this.attemptCount = attemptCount;
+    this.lastError = lastError;
   }
 }

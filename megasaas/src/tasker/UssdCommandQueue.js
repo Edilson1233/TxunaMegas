@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { UssdCommand, UssdCommandStatus } from './UssdCommand.js';
 import { UssdEvents } from './UssdEvents.js';
 
+const DEFAULT_DISPATCH_TIMEOUT_MS = 2 * 60 * 1000;
+const DEFAULT_MAX_ATTEMPTS = 1;
+
 /**
  * UssdCommandQueue
  * ------------------
@@ -16,10 +19,20 @@ export class UssdCommandQueue {
   #commands = new Map();
   #eventBus;
   #logger;
+  #dispatchTimeoutMs;
+  #maxAttempts;
 
-  constructor({ eventBus, logger }) {
+  constructor({
+    eventBus,
+    logger,
+    dispatchTimeoutMs = DEFAULT_DISPATCH_TIMEOUT_MS,
+    maxAttempts = DEFAULT_MAX_ATTEMPTS,
+  } = {}) {
     this.#eventBus = eventBus;
     this.#logger = logger;
+    this.#dispatchTimeoutMs =
+      Number.isFinite(dispatchTimeoutMs) && dispatchTimeoutMs > 0 ? dispatchTimeoutMs : DEFAULT_DISPATCH_TIMEOUT_MS;
+    this.#maxAttempts = Number.isInteger(maxAttempts) && maxAttempts > 0 ? maxAttempts : DEFAULT_MAX_ATTEMPTS;
   }
 
   enqueue({ transactionId, contextKey, destinationNumber, amount = null, paymentAmount = null, deliveryAmount = null }) {
@@ -45,6 +58,7 @@ export class UssdCommandQueue {
     for (const command of this.#commands.values()) {
       if (command.status === UssdCommandStatus.PENDING) {
         command.status = UssdCommandStatus.DISPATCHED;
+        command.attemptCount += 1;
         command.dispatchedAt = new Date().toISOString();
         this.#eventBus?.emit(UssdEvents.DISPATCHED, { command });
         return command;
@@ -76,6 +90,49 @@ export class UssdCommandQueue {
     }
 
     return null;
+  }
+
+  checkTimedOut(now = Date.now()) {
+    const affected = [];
+
+    for (const command of this.#commands.values()) {
+      if (command.status !== UssdCommandStatus.DISPATCHED) continue;
+
+      const dispatchedAt = Date.parse(command.dispatchedAt);
+      if (Number.isNaN(dispatchedAt) || now - dispatchedAt < this.#dispatchTimeoutMs) continue;
+
+      command.lastError = 'USSD command acknowledgement timed out';
+      affected.push(command);
+
+      if (command.attemptCount < this.#maxAttempts) {
+        command.status = UssdCommandStatus.PENDING;
+        command.dispatchedAt = null;
+        this.#logger?.warn(
+          {
+            commandId: command.id,
+            transactionId: command.transactionId,
+            attemptCount: command.attemptCount,
+            maxAttempts: this.#maxAttempts,
+          },
+          '[UssdCommandQueue] comando USSD expirou sem ACK; recolocado na fila'
+        );
+        continue;
+      }
+
+      command.status = UssdCommandStatus.TIMED_OUT;
+      this.#commands.delete(command.id);
+      this.#logger?.error(
+        {
+          commandId: command.id,
+          transactionId: command.transactionId,
+          attemptCount: command.attemptCount,
+        },
+        '[UssdCommandQueue] comando USSD expirou sem ACK; tentativa final falhou'
+      );
+      this.#eventBus?.emit(UssdEvents.FAILED, { command, details: command.lastError });
+    }
+
+    return affected;
   }
 }
 

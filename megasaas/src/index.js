@@ -20,6 +20,7 @@ const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 // confirmação. Nesta fase, um setInterval simples chega — a Fase 7
 // substitui isto por um job atrasado no BullMQ (mais fiável).
 const EXPIRY_CHECK_INTERVAL_MS = 5_000;
+const DEFAULT_USSD_COMMAND_TIMEOUT_MS = 2 * 60 * 1000;
 
 async function main() {
   const eventBus = new EventBus({ logger });
@@ -51,7 +52,12 @@ async function main() {
     logger,
     corePaymentClient,
   });
-  const ussdCommandQueue = new UssdCommandQueue({ eventBus, logger });
+  const ussdCommandQueue = new UssdCommandQueue({
+    eventBus,
+    logger,
+    dispatchTimeoutMs: Number(process.env.USSD_COMMAND_TIMEOUT_MS ?? DEFAULT_USSD_COMMAND_TIMEOUT_MS),
+    maxAttempts: Number(process.env.USSD_COMMAND_MAX_ATTEMPTS ?? 1),
+  });
 
   const provider = new BaileysProvider({
     eventBus,
@@ -76,6 +82,11 @@ async function main() {
     pendingTransactionManager.checkExpired().catch((err) => logger.error({ err }, '[main] falha ao verificar expirações'));
   }, EXPIRY_CHECK_INTERVAL_MS);
   expiryInterval.unref();
+
+  const ussdCommandTimeoutInterval = setInterval(() => {
+    ussdCommandQueue.checkTimedOut();
+  }, EXPIRY_CHECK_INTERVAL_MS);
+  ussdCommandTimeoutInterval.unref();
 
   // --- Servidor HTTP para o Tasker (Fase 5) ---
   const taskerApiKey = process.env.TASKER_API_KEY;
@@ -110,6 +121,7 @@ async function main() {
   const shutdown = async () => {
     logger.info('[main] a encerrar...');
     clearInterval(expiryInterval);
+    clearInterval(ussdCommandTimeoutInterval);
     httpServer.close();
     await provider.disconnect();
     process.exit(0);

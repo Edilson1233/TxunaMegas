@@ -90,6 +90,7 @@ export function handleNextCommand({ ussdCommandQueue }) {
       paymentAmount: command.paymentAmount,
       deliveryAmount: command.deliveryAmount,
       amount: command.deliveryAmount,
+      attemptCount: command.attemptCount,
     },
   };
 }

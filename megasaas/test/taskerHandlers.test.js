@@ -176,6 +176,7 @@ test('handleNextCommand devolve amount como megas a digitar no USSD', () => {
   assert.equal(result.body.paymentAmount, 15);
   assert.equal(result.body.deliveryAmount, 600);
   assert.equal(result.body.amount, 600);
+  assert.equal(result.body.attemptCount, 1);
 });
 
 test('handleCommandAck marca sucesso corretamente', () => {
