@@ -14,6 +14,7 @@ public record PaymentDecisionResponse(
         String externalTransactionId,
         BigDecimal amount,
         String destinationNumber,
+        Integer deliveryAmount,
         Object ussdCommand,
         OffsetDateTime checkedAt
 ) {
@@ -22,7 +23,8 @@ public record PaymentDecisionResponse(
             UUID orderId,
             UUID paymentId,
             String contextKey,
-            ParsedPaymentRequest payment
+            ParsedPaymentRequest payment,
+            ProductPackagePrice productPackagePrice
     ) {
         return new PaymentDecisionResponse(
                 PaymentDecision.PENDING_VERIFICATION,
@@ -34,6 +36,7 @@ public record PaymentDecisionResponse(
                 payment.externalTransactionId(),
                 payment.amount(),
                 payment.destinationNumber(),
+                deliveryAmount(productPackagePrice),
                 null,
                 OffsetDateTime.now()
         );
@@ -44,7 +47,8 @@ public record PaymentDecisionResponse(
             UUID orderId,
             UUID paymentId,
             String contextKey,
-            ParsedPaymentRequest payment
+            ParsedPaymentRequest payment,
+            ProductPackagePrice productPackagePrice
     ) {
         return new PaymentDecisionResponse(
                 PaymentDecision.VERIFIED,
@@ -56,12 +60,18 @@ public record PaymentDecisionResponse(
                 payment.externalTransactionId(),
                 payment.amount(),
                 payment.destinationNumber(),
+                deliveryAmount(productPackagePrice),
                 null,
                 OffsetDateTime.now()
         );
     }
 
-    static PaymentDecisionResponse orphanAccepted(String tenantId, UUID paymentId, ParsedPaymentRequest payment) {
+    static PaymentDecisionResponse orphanAccepted(
+            String tenantId,
+            UUID paymentId,
+            ParsedPaymentRequest payment,
+            ProductPackagePrice productPackagePrice
+    ) {
         return new PaymentDecisionResponse(
                 PaymentDecision.ORPHAN_CONFIRMATION_ACCEPTED,
                 null,
@@ -72,6 +82,7 @@ public record PaymentDecisionResponse(
                 payment.externalTransactionId(),
                 payment.amount(),
                 payment.destinationNumber(),
+                deliveryAmount(productPackagePrice),
                 null,
                 OffsetDateTime.now()
         );
@@ -97,7 +108,12 @@ public record PaymentDecisionResponse(
                 amount,
                 destinationNumber,
                 null,
+                null,
                 OffsetDateTime.now()
         );
+    }
+
+    private static Integer deliveryAmount(ProductPackagePrice productPackagePrice) {
+        return productPackagePrice != null ? productPackagePrice.allowanceMb() : null;
     }
 }

@@ -1,5 +1,6 @@
 package mz.megasaas.core.payment;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,7 +16,9 @@ interface PaymentRepository {
 
     Optional<PaymentRecord> findPayment(String tenantId, PaymentProvider provider, String externalTransactionId);
 
-    UUID insertOrderForClaim(PaymentClaimRequest request, OrderStatus status);
+    Optional<ProductPackagePrice> findActivePackageByAmount(String tenantId, BigDecimal amount);
+
+    UUID insertOrderForClaim(PaymentClaimRequest request, OrderStatus status, ProductPackagePrice productPackagePrice);
 
     UUID insertClaimedPayment(String tenantId, UUID orderId, ParsedPaymentRequest payment, PaymentStatus status);
 

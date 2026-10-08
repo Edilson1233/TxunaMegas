@@ -125,19 +125,52 @@ class JdbcPaymentRepository implements PaymentRepository {
     }
 
     @Override
-    public UUID insertOrderForClaim(PaymentClaimRequest request, OrderStatus status) {
+    public Optional<ProductPackagePrice> findActivePackageByAmount(String tenantId, BigDecimal amount) {
+        return jdbcClient.sql("""
+                        select pp.id as package_id, pp.allowance_mb, pr.amount
+                        from prices pr
+                        join product_packages pp on pp.id = pr.package_id
+                        join products p on p.id = pp.product_id
+                        where pr.tenant_id = cast(:tenantId as uuid)
+                          and pp.tenant_id = cast(:tenantId as uuid)
+                          and p.tenant_id = cast(:tenantId as uuid)
+                          and pr.amount = :amount
+                          and pr.valid_from <= now()
+                          and (pr.valid_to is null or pr.valid_to > now())
+                          and pp.status = 'ACTIVE'
+                          and p.status = 'ACTIVE'
+                        order by pr.valid_from desc
+                        limit 1
+                        """)
+                .param("tenantId", tenantId)
+                .param("amount", amount)
+                .query((rs, rowNum) -> new ProductPackagePrice(
+                        rs.getObject("package_id", UUID.class),
+                        rs.getObject("allowance_mb", Integer.class),
+                        rs.getBigDecimal("amount")
+                ))
+                .optional();
+    }
+
+    @Override
+    public UUID insertOrderForClaim(
+            PaymentClaimRequest request,
+            OrderStatus status,
+            ProductPackagePrice productPackagePrice
+    ) {
         UUID id = UUID.randomUUID();
         jdbcClient.sql("""
                         insert into orders (
-                            id, tenant_id, context_key, destination_number, amount_expected, status
+                            id, tenant_id, package_id, context_key, destination_number, amount_expected, status
                         )
                         values (
-                            cast(:id as uuid), cast(:tenantId as uuid), :contextKey,
+                            cast(:id as uuid), cast(:tenantId as uuid), cast(:packageId as uuid), :contextKey,
                             :destinationNumber, :amountExpected, :status
                         )
                         """)
                 .param("id", id.toString())
                 .param("tenantId", request.tenantId())
+                .param("packageId", productPackagePrice != null ? productPackagePrice.packageId().toString() : null)
                 .param("contextKey", request.contextKey())
                 .param("destinationNumber", request.parsedPayment().destinationNumber())
                 .param("amountExpected", request.parsedPayment().amount())

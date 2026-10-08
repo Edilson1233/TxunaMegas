@@ -67,6 +67,7 @@ test('PendingTransactionManager emite CLAIM_VERIFIED com contextKey devolvido pe
           contextKey: 'chat1',
           externalTransactionId: 'DFT1KNIBSBZ',
           amount: 210,
+          deliveryAmount: 600,
           destinationNumber: '859253929',
         };
       },
@@ -81,7 +82,10 @@ test('PendingTransactionManager emite CLAIM_VERIFIED com contextKey devolvido pe
 
   assert.equal(result.verified, true);
   assert.equal(result.transaction.source, TransactionSource.TASKER_SMS);
+  assert.equal(result.transaction.amount, 210);
+  assert.equal(result.transaction.deliveryAmount, 600);
   assert.equal(result.transaction.destinationNumber, '859253929');
   assert.equal(emitted.contextKey, 'chat1');
   assert.equal(emitted.verification.transaction.externalTransactionId, 'DFT1KNIBSBZ');
+  assert.equal(emitted.verification.transaction.deliveryAmount, 600);
 });

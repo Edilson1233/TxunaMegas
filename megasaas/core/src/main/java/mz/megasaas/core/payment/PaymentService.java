@@ -78,10 +78,18 @@ public class PaymentService {
             return resolveExistingPaymentForClaim(request, claim, whatsappInstanceId.get(), existing.get());
         }
 
-        UUID orderId = repository.insertOrderForClaim(request, OrderStatus.PENDING_PAYMENT);
+        ProductPackagePrice productPackagePrice = resolvePackage(request.tenantId(), claim.amount());
+        UUID orderId = repository.insertOrderForClaim(request, OrderStatus.PENDING_PAYMENT, productPackagePrice);
         UUID paymentId = repository.insertClaimedPayment(request.tenantId(), orderId, claim, PaymentStatus.CLAIMED);
         repository.insertPaymentClaim(paymentId, whatsappInstanceId.get(), request, PaymentClaimStatus.PENDING);
-        return PaymentDecisionResponse.pending(request.tenantId(), orderId, paymentId, request.contextKey(), claim);
+        return PaymentDecisionResponse.pending(
+                request.tenantId(),
+                orderId,
+                paymentId,
+                request.contextKey(),
+                claim,
+                productPackagePrice
+        );
     }
 
     private PaymentDecisionResponse resolveExistingPaymentForClaim(
@@ -96,10 +104,18 @@ public class PaymentService {
                 return rejectedForExisting(request.tenantId(), existing, PaymentDecisionReason.AMOUNT_MISMATCH);
             }
 
-            UUID orderId = repository.insertOrderForClaim(request, OrderStatus.PAYMENT_VERIFIED);
+            ProductPackagePrice productPackagePrice = resolvePackage(request.tenantId(), claim.amount());
+            UUID orderId = repository.insertOrderForClaim(request, OrderStatus.PAYMENT_VERIFIED, productPackagePrice);
             repository.markPaymentAndOrderVerified(existing.id(), orderId, claim.destinationNumber());
             repository.insertPaymentClaim(existing.id(), whatsappInstanceId, request, PaymentClaimStatus.MATCHED);
-            return PaymentDecisionResponse.verified(request.tenantId(), orderId, existing.id(), request.contextKey(), claim);
+            return PaymentDecisionResponse.verified(
+                    request.tenantId(),
+                    orderId,
+                    existing.id(),
+                    request.contextKey(),
+                    claim,
+                    productPackagePrice
+            );
         }
 
         repository.insertPaymentClaim(existing.id(), whatsappInstanceId, request, PaymentClaimStatus.REJECTED);
@@ -151,7 +167,12 @@ public class PaymentService {
 
         UUID paymentId = repository.insertOrphanPayment(request.tenantId(), confirmation);
         repository.insertPaymentConfirmation(paymentId, request, PaymentConfirmationStatus.ORPHAN);
-        return PaymentDecisionResponse.orphanAccepted(request.tenantId(), paymentId, confirmation);
+        return PaymentDecisionResponse.orphanAccepted(
+                request.tenantId(),
+                paymentId,
+                confirmation,
+                resolvePackage(request.tenantId(), confirmation.amount())
+        );
     }
 
     private PaymentDecisionResponse resolveExistingPaymentForConfirmation(
@@ -190,7 +211,8 @@ public class PaymentService {
                             confirmation.warnings(),
                             confirmation.parserVersion(),
                             confirmation.source()
-                    )
+                    ),
+                    resolvePackage(request.tenantId(), confirmation.amount())
             );
         }
 
@@ -263,5 +285,9 @@ public class PaymentService {
 
     private boolean sameAmount(BigDecimal left, BigDecimal right) {
         return left != null && right != null && left.compareTo(right) == 0;
+    }
+
+    private ProductPackagePrice resolvePackage(String tenantId, BigDecimal amount) {
+        return repository.findActivePackageByAmount(tenantId, amount).orElse(null);
     }
 }

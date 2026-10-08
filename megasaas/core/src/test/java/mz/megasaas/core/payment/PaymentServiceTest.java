@@ -77,6 +77,19 @@ class PaymentServiceTest {
     }
 
     @Test
+    void verifiedPaymentIncludesDeliveryAmountWhenPriceMatchesActivePackage() {
+        repository.addActivePackage(new BigDecimal("210.00"), 1024);
+        service.registerClaim(validClaim("TX1", "859253929"), "claim-key-package");
+
+        PaymentDecisionResponse response = service.registerSmsConfirmation(validSms("TX1"), "sms-key-package");
+
+        assertThat(response.decision()).isEqualTo(PaymentDecision.VERIFIED);
+        assertThat(response.amount()).isEqualByComparingTo("210.00");
+        assertThat(response.deliveryAmount()).isEqualTo(1024);
+        assertThat(repository.orderPackageIds.get(response.orderId())).isNotNull();
+    }
+
+    @Test
     void registerSmsConfirmationRejectsTransferSentForDeliveryFlow() {
         SmsPaymentConfirmationRequest request = validSms("TX1", TransactionType.TRANSFER_SENT);
 
@@ -157,7 +170,16 @@ class PaymentServiceTest {
         private final Map<String, PaymentRecord> paymentsByExternalId = new HashMap<>();
         private final Map<UUID, PaymentRecord> payments = new HashMap<>();
         private final Map<UUID, String> orderContextKeys = new HashMap<>();
+        private final Map<UUID, UUID> orderPackageIds = new HashMap<>();
+        private final Map<String, ProductPackagePrice> packagePricesByAmount = new HashMap<>();
         private int claimCount;
+
+        void addActivePackage(BigDecimal amount, int allowanceMb) {
+            packagePricesByAmount.put(
+                    amountKey(amount),
+                    new ProductPackagePrice(UUID.randomUUID(), allowanceMb, amount)
+            );
+        }
 
         @Override
         public Optional<PaymentDecisionResponse> findIdempotentPaymentDecision(
@@ -198,9 +220,19 @@ class PaymentServiceTest {
         }
 
         @Override
-        public UUID insertOrderForClaim(PaymentClaimRequest request, OrderStatus status) {
+        public Optional<ProductPackagePrice> findActivePackageByAmount(String tenantId, BigDecimal amount) {
+            return Optional.ofNullable(packagePricesByAmount.get(amountKey(amount)));
+        }
+
+        @Override
+        public UUID insertOrderForClaim(
+                PaymentClaimRequest request,
+                OrderStatus status,
+                ProductPackagePrice productPackagePrice
+        ) {
             UUID id = UUID.randomUUID();
             orderContextKeys.put(id, request.contextKey());
+            orderPackageIds.put(id, productPackagePrice != null ? productPackagePrice.packageId() : null);
             return id;
         }
 
@@ -276,6 +308,10 @@ class PaymentServiceTest {
             );
             payments.put(paymentId, updated);
             paymentsByExternalId.put(updated.externalTransactionId(), updated);
+        }
+
+        private String amountKey(BigDecimal amount) {
+            return amount.stripTrailingZeros().toPlainString();
         }
     }
 }
