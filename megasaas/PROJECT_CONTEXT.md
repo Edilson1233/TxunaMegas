@@ -86,6 +86,11 @@ deve:
   mensagem depois.
 - O valor digitado no USSD deve ser `deliveryAmount` resolvido pela tabela de preços do
   tenant no Core, não o valor monetário transferido pelo cliente.
+- Quando o Core está ativo, o Node registra o comando USSD no Core antes de entregar ao
+  MacroDroid/Tasker e envia o ACK final ao Core para atualizar pedido, pagamento e
+  auditoria mínima.
+- Se esse registro Core falhar com `orderId/paymentId` presentes, o Node não deve
+  enfileirar o USSD localmente; entregar megas sem System of Record é falha operacional.
 
 ## 3. CONTRATO Tasker ↔ Backend (fixo desde a Fase 1, usado por todas as fases seguintes)
 
@@ -95,7 +100,8 @@ deve:
   "transactionId": "string (único, do SMS do M-Pesa)",
   "amount": "number",
   "rawSms": "string (corpo integral do SMS)",
-  "timestamp": "ISO-8601 string"
+  "timestamp": "ISO-8601 string",
+  "deviceId": "string opcional; também pode ir no header X-Tasker-Device-Id"
 }
 ```
 
@@ -107,6 +113,16 @@ ou
 ```json
 { "status": "REJECTED", "reason": "DUPLICATE_TRANSACTION | INVALID_AMOUNT | INVALID_SIGNATURE | ..." }
 ```
+
+**Backend → Tasker/MacroDroid** (`GET /api/v1/tasker/commands/next`)
+- Devolve `204` quando não há comando.
+- Devolve `200` com `commandId`, `destinationNumber`, `paymentAmount`, `deliveryAmount`
+  e `amount` quando há comando. `amount` é alias de `deliveryAmount` para o MacroDroid.
+
+**Tasker/MacroDroid → Backend** (`POST /api/v1/tasker/commands/{commandId}/ack`)
+- Deve enviar `success=true` ou `success=false`, por query param ou body.
+- Quando o comando foi registrado no Core, o Node replica esse ACK para
+  `/internal/v1/ussd-commands/{commandId}/ack`.
 
 ## 4. SEGURANÇA (não negociável em nenhuma fase)
 - Idempotência obrigatória por `transactionId` (chave única em DB).
@@ -154,9 +170,10 @@ contratos (interfaces/DTOs) estáveis, para que a fase seguinte nunca exija rees
   de WhatsApp com SMS real validada.
 - Tasker (Fase 5): faz **polling** em `GET /commands/next` — o backend nunca contacta o
   Tasker diretamente (dispositivo Android sem IP público estável). Autenticação por
-  Bearer token partilhado (`TASKER_API_KEY`). Handlers HTTP escritos como funções puras
-  (`src/tasker/taskerHandlers.js`), sem depender de Express — mesmo padrão *ports &
-  adapters* das fases anteriores, aplicado ao transporte HTTP.
+  Bearer token global (`TASKER_API_KEY`) em local/dev ou por token específico de
+  dispositivo (`TASKER_DEVICE_KEYS`) em produção assistida. Handlers HTTP escritos como
+  funções puras (`src/tasker/taskerHandlers.js`), sem depender de Express — mesmo padrão
+  *ports & adapters* das fases anteriores, aplicado ao transporte HTTP.
 
 ## 7. Referência competitiva — "SPIDER BOT" (análise, nada implementado ainda)
 O utilizador partilhou capturas de ecrã de um bot concorrente já em produção
@@ -209,5 +226,8 @@ Resumo operacional atual:
   está configurado.
 - Core já guarda pagamentos/pedidos e resolve `deliveryAmount` a partir de produtos,
   pacotes e preços do tenant.
+- Core já guarda comandos USSD, recebe ACK final, atualiza pedido/pagamento e grava
+  auditoria mínima do ciclo USSD.
 - API interna de catálogo já existe para produtos, pacotes e preços.
-- Testes mais recentes registados: 104 testes Node e 20 testes Core a passar.
+- Tasker/MacroDroid já pode usar credenciais por dispositivo com `TASKER_DEVICE_KEYS`.
+- Testes mais recentes registados: 110 testes Node e 27 testes Core a passar.

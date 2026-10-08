@@ -148,7 +148,8 @@ em vez de deixá-lo derrubar o processo. Testes novos: `test/eventBus.test.js` (
 - Entregue em `src/tasker/`: `UssdCommand.js` (+ `UssdCommandStatus`), `UssdEvents.js`
   (catálogo de eventos), `UssdCommandQueue.js` (fila em memória, mesmo padrão de risco
   documentado das fases anteriores — Redis/BullMQ na Fase 7), `taskerAuth.js`
-  (`verifyTaskerToken`, Bearer token partilhado via `TASKER_API_KEY`), `RateLimiter.js`
+  (`verifyTaskerToken`, Bearer token inicialmente partilhado via `TASKER_API_KEY`),
+  `RateLimiter.js`
   (janela deslizante em memória), `taskerHandlers.js` (3 funções PURAS, sem depender de
   Express — testáveis diretamente: `handleSmsReport`, `handleNextCommand`,
   `handleCommandAck`), `server.js` (camada Express fina que só trata transporte HTTP —
@@ -300,12 +301,23 @@ Total final: **75 testes**.
 - Entregue API interna de catálogo no Core para produtos, pacotes e preços:
   `/internal/v1/tenants/{tenantId}/catalog/**`, com validações de estado, validade de preço
   e encerramento automático do preço aberto anterior do mesmo pacote.
+- Entregue ciclo mínimo de comandos USSD no Core: criação idempotente em
+  `/internal/v1/ussd-commands`, validação de dispositivo ativo, validação do par
+  pedido/pagamento, ACK em `/internal/v1/ussd-commands/{commandId}/ack`, atualização
+  de pedido/pagamento e auditoria mínima em `audit_events`.
+- Entregue integração Node -> Core para auditoria USSD: quando o Core devolve `orderId` e
+  `paymentId`, o Node registra o comando antes de enfileirar localmente e envia ACK ao Core
+  quando o MacroDroid/Tasker confirma sucesso ou falha.
+- Regra de segurança aplicada: com Core ativo e IDs de pedido/pagamento presentes, falha ao
+  registrar o comando no Core bloqueia a fila local para evitar entrega sem auditoria.
+- Entregue autenticação Tasker/MacroDroid por dispositivo como opção operacional:
+  `TASKER_DEVICE_KEYS=deviceId:token,...`, mantendo `TASKER_API_KEY` como fallback local.
 - Entregue seed local fora do Flyway (`core/src/main/resources/db/seed/local-dev.sql`) para
   testar Core + PostgreSQL + Node + MacroDroid com tenant/dispositivo/pacotes reais.
 - Documentação e contrato atualizados: `ARCHITECTURE.md`, `docs/local-core-seed.md`,
   `docs/mobile-core-flow-test.md` e `contracts/core-api.openapi.yaml`.
-- Validação local mais recente: `npm.cmd test` com 104 testes Node a passar e
-  `.\mvnw.cmd test` com 20 testes Core a passar.
+- Validação local mais recente: `npm.cmd test` com 110 testes Node a passar e
+  `.\mvnw.cmd test` com 27 testes Core a passar.
 ### 🚧 FASE 7 — Redis e BullMQ (preparação iniciada)
 - Entregue primeiro incremento preparatório no Node: `UssdCommandQueue` deixou de guardar
   comandos diretamente num `Map` interno e passou a usar o contrato `UssdCommandStore`.

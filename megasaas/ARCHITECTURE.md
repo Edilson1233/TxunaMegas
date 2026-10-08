@@ -2,13 +2,13 @@
 
 ## Atualizacao Operacional
 
-O Node.js ja possui uma integracao opcional com o Spring Core para pagamentos. Quando `CORE_API_BASE_URL` e `CORE_INTERNAL_API_TOKEN` estao configurados, claims WhatsApp e confirmacoes SMS sao enviadas ao Core por REST autenticado. Quando essas variaveis nao existem, o fluxo antigo em memoria continua ativo para testes locais com WhatsApp/MacroDroid.
+O Node.js ja possui uma integracao opcional com o Spring Core para pagamentos e auditoria minima de comandos USSD. Quando `CORE_API_BASE_URL` e `CORE_INTERNAL_API_TOKEN` estao configurados, claims WhatsApp, confirmacoes SMS, criacao de comando USSD e ACK final sao enviados ao Core por REST autenticado. Quando essas variaveis nao existem, o fluxo antigo em memoria continua ativo para testes locais com WhatsApp/MacroDroid.
 
 Este documento descreve o estado real observado no código e a direção arquitetural aprovada para evolução incremental. O código continua a ser a fonte principal da verdade; documentação histórica das fases pode estar incompleta ou desatualizada.
 
 ## Estado Atual
 
-O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp e confirmacoes SMS ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo local para testes com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core e ha um `compose.yaml` local para PostgreSQL + Redis. A fila USSD ja usa o contrato assincrono `UssdCommandStore` e pode usar BullMQ/Redis de forma opcional via `USSD_COMMAND_STORE=bullmq`; pending transactions, SMS orfas e idempotencia local tambem podem usar Redis via `PENDING_TRANSACTION_STORE=redis`.
+O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp, confirmacoes SMS e ciclo de comando USSD ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo local para testes com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core e ha um `compose.yaml` local para PostgreSQL + Redis. A fila USSD ja usa o contrato assincrono `UssdCommandStore` e pode usar BullMQ/Redis de forma opcional via `USSD_COMMAND_STORE=bullmq`; pending transactions, SMS orfas e idempotencia local tambem podem usar Redis via `PENDING_TRANSACTION_STORE=redis`.
 
 Fluxo real atual:
 
@@ -19,9 +19,12 @@ Cliente WhatsApp
   -> PurchaseFlowCoordinator
   -> MpesaParser
   -> PendingTransactionManager
+  -> opcional: Spring Core payment/order decision
+  -> opcional: Spring Core ussd_command PENDING + audit_event
   -> UssdCommandQueue
   -> Tasker/MacroDroid via polling HTTP
   -> ACK USSD
+  -> opcional: Spring Core ussd_command COMPLETED/FAILED + order/payment update
   -> resposta WhatsApp
 
 Tasker/MacroDroid
@@ -91,8 +94,6 @@ core/
   src/test/java/mz/megasaas/core/
 ```
 
-Existe também `src/core/ussd/`, atualmente vazio.
-
 ## Funcionalidades Implementadas
 
 - Ligação WhatsApp via Baileys, com QR, reconexão e limpeza de credenciais após logout real.
@@ -102,17 +103,20 @@ Existe também `src/core/ussd/`, atualmente vazio.
 - Sessões por `contextKey`, incluindo isolamento em grupos por `groupId::userId`.
 - Fluxo de compra por WhatsApp: reconhecer comprovativo, pedir número de destino quando falta, registar alegação, aguardar confirmação e responder ao cliente.
 - Receção de SMS real via Tasker/MacroDroid em `POST /api/v1/tasker/sms`.
-- Autenticação Tasker por Bearer token global.
-- Rate limiting em memória por header de autorização.
+- Autenticação Tasker por Bearer token global ou por token especifico de dispositivo via `TASKER_DEVICE_KEYS`.
+- Rate limiting em memória por dispositivo/autorização.
 - Pending transactions com suporte a WhatsApp primeiro ou SMS primeiro; por defeito usam memoria, mas podem usar Redis com `PENDING_TRANSACTION_STORE=redis`.
 - Idempotência local por `externalTransactionId` usado; por defeito em memoria, mas persistente em Redis quando o adapter esta ativo.
 - Fila USSD com contrato assincrono, polling por `GET /api/v1/tasker/commands/next` e ACK por `POST /api/v1/tasker/commands/:commandId/ack`; por defeito usa memoria, mas pode usar BullMQ/Redis com `USSD_COMMAND_STORE=bullmq`.
 - Integração opcional Node -> Spring Core para claims de pagamento e confirmações SMS, com idempotência persistida no Core.
+- Integração opcional Node -> Spring Core para registrar comando USSD antes da execução e enviar ACK final depois de sucesso/falha.
+- Com Core ativo e IDs de pedido/pagamento presentes, falha ao registrar o comando USSD no Core bloqueia a entrega local para evitar megas sem auditoria/System of Record.
 - Spring Core com autenticação interna Bearer token para `/internal/**`.
 - Spring Core com tenant context por instância WhatsApp.
 - Spring Core com modelo relacional de produtos, pacotes, preços, pedidos, pagamentos, claims, confirmações, comandos USSD e auditoria.
 - Spring Core resolve `deliveryAmount` a partir de `prices.amount` e `product_packages.allowance_mb` ativos do tenant.
 - Spring Core expõe API interna mínima de catálogo para criar/listar/atualizar produtos, pacotes e preços por tenant.
+- Spring Core expõe ciclo mínimo de comandos USSD em `/internal/v1/ussd-commands` e `/internal/v1/ussd-commands/{commandId}/ack`, validando dispositivo ativo, par pedido/pagamento e idempotência de criação.
 
 ## Limites E Dívida Técnica
 
@@ -126,16 +130,16 @@ Existe também `src/core/ussd/`, atualmente vazio.
 - `PaymentProvider.EMOLA` existe como valor reservado, mas não há parser e-Mola.
 - Não há comando WhatsApp como `.tabela`, `.pagar`, `.abrir` ou `.fechar`.
 - `package.json` ainda descreve fases antigas e as dependências não estavam instaladas no ambiente analisado.
-- O diretório `src/core/ussd/` está vazio; a implementação real está em `src/tasker/`.
+- A execução USSD continua operacionalmente em `src/tasker/`; o Core Java possui `core/src/main/java/mz/megasaas/core/ussd/` para persistir/auditar o ciclo do comando.
 
 ## Riscos De Segurança
 
-- O token Tasker é global e partilhado; em produção deve ser por dispositivo/tenant.
+- O token Tasker global continua como fallback local; em produção assistida deve-se usar `TASKER_DEVICE_KEYS` por dispositivo e evoluir para credenciais persistidas por tenant/dispositivo no Core.
 - A comparação de token é simples e não constant-time.
 - Anti-replay usa timestamp, mas não há assinatura HMAC, nonce persistido ou request id.
 - Idempotência local em memória não protege contra replay após restart; usar `PENDING_TRANSACTION_STORE=redis` reduz esse risco no modo sem Core.
 - Rate limit em memória não funciona em escala horizontal.
-- Pagamentos e USSD ainda não têm auditoria persistente.
+- USSD já tem auditoria mínima persistente no Core para criação e ACK; ainda falta auditoria operacional completa, consulta administrativa e retenção/alertas.
 - A confirmação de pagamento deve restringir o fluxo de venda a transações recebidas (`RECEIVED`) quando o core for formalizado.
 - Comandos USSD ainda precisam de retries persistentes, deduplicação distribuída e política de falha operacional antes de produção.
 
@@ -186,10 +190,10 @@ Comunicação inicial Node ↔ Spring Boot: REST API autenticada. Arquitetura or
 
 ## Migração Incremental
 
-1. Definir contrato REST autenticado Node → Spring para confirmação de SMS, alegação de pagamento, criação/atualização de pedido e resultado USSD.
-2. Criar Spring Boot mínimo com PostgreSQL, migrations e entidades: tenant, device, customer, order, payment, ussd_command/audit_event.
-3. Migrar idempotência para PostgreSQL com chave única por `tenantId + provider + externalTransactionId`.
-4. Manter WhatsApp, Tasker e parser no Node, mas delegar decisões persistentes ao Spring.
+1. Definir contrato REST autenticado Node → Spring para confirmação de SMS, alegação de pagamento, criação/atualização de pedido e resultado USSD. Entregue para pagamentos e ciclo mínimo USSD.
+2. Criar Spring Boot mínimo com PostgreSQL, migrations e entidades: tenant, device, customer, order, payment, ussd_command/audit_event. Entregue como schema inicial.
+3. Migrar idempotência para PostgreSQL com chave única por `tenantId + provider + externalTransactionId`. Entregue para claims/confirmations e criação de comando USSD no modo Core.
+4. Manter WhatsApp, Tasker e parser no Node, mas delegar decisões persistentes ao Spring. Em curso.
 5. Evoluir o adapter Redis/BullMQ da fila USSD com retry, timeout, backoff e dead-letter.
 6. Substituir stores em memória por adaptadores reais, mantendo interfaces onde fizer sentido.
 7. Implementar credenciais por dispositivo/tenant e rate limiting distribuído.
@@ -202,7 +206,8 @@ Artefactos criados para iniciar esta migração:
 - `docs/local-core-seed.md`: instruções para semear dados locais de tenant, dispositivo, produto, pacote e preço.
 - `docs/mobile-core-flow-test.md`: roteiro para testar telemóvel + MacroDroid usando preços do Core.
 - `core/`: Spring Boot Core iniciado com autenticação interna, endpoint de tenant context,
-  endpoints internos de pagamentos, catálogo, idempotência persistida e migration PostgreSQL.
+  endpoints internos de pagamentos, catálogo, ciclo mínimo de comandos USSD, auditoria mínima,
+  idempotência persistida e migration PostgreSQL.
 
 ## Validação Atual
 
@@ -212,13 +217,13 @@ Testes executados no diagnóstico:
 npm.cmd test
 ```
 
-Resultado Node observado: 104 testes passaram, 0 falharam.
+Resultado Node observado: 110 testes passaram, 0 falharam.
 
 ```powershell
 cd core
 .\mvnw.cmd test
 ```
 
-Resultado Core observado: 20 testes passaram, 0 falharam.
+Resultado Core observado: 27 testes passaram, 0 falharam.
 
 Nota: `npm test` no PowerShell pode falhar por bloqueio de `npm.ps1`; usar `npm.cmd test` nesse ambiente.
