@@ -30,6 +30,18 @@ class PaymentServiceTest {
     }
 
     @Test
+    void registerClaimAcceptsCustomerTransferSentProofFromWhatsapp() {
+        PaymentClaimRequest request = validClaim("TX1", "859253929", TransactionType.TRANSFER_SENT);
+
+        PaymentDecisionResponse response = service.registerClaim(request, "claim-key-transfer-sent");
+
+        assertThat(response.decision()).isEqualTo(PaymentDecision.PENDING_VERIFICATION);
+        assertThat(response.orderId()).isNotNull();
+        assertThat(response.paymentId()).isNotNull();
+        assertThat(repository.claimCount).isEqualTo(1);
+    }
+
+    @Test
     void registerClaimRejectsWrongSource() {
         PaymentClaimRequest request = validClaim("TX1", "859253929");
         ParsedPaymentRequest parsed = parsedPayment("TX1", TransactionSource.TASKER_SMS, TransactionType.RECEIVED, "859253929");
@@ -109,6 +121,10 @@ class PaymentServiceTest {
     }
 
     private PaymentClaimRequest validClaim(String transactionId, String destinationNumber) {
+        return validClaim(transactionId, destinationNumber, TransactionType.RECEIVED);
+    }
+
+    private PaymentClaimRequest validClaim(String transactionId, String destinationNumber, TransactionType type) {
         return new PaymentClaimRequest(
                 TENANT_ID,
                 WHATSAPP_INSTANCE_ID,
@@ -119,7 +135,7 @@ class PaymentServiceTest {
                 "msg-" + transactionId,
                 OffsetDateTime.now(),
                 "raw whatsapp text",
-                parsedPayment(transactionId, TransactionSource.WHATSAPP_TEXT, TransactionType.RECEIVED, destinationNumber)
+                parsedPayment(transactionId, TransactionSource.WHATSAPP_TEXT, type, destinationNumber)
         );
     }
 

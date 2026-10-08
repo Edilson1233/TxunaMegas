@@ -52,7 +52,8 @@ public class PaymentService {
         PaymentDecisionResponse invalid = validateParsedPayment(
                 request.tenantId(),
                 claim,
-                TransactionSource.WHATSAPP_TEXT
+                TransactionSource.WHATSAPP_TEXT,
+                false
         );
         if (invalid != null) {
             return invalid;
@@ -127,7 +128,8 @@ public class PaymentService {
         PaymentDecisionResponse invalid = validateParsedPayment(
                 request.tenantId(),
                 confirmation,
-                TransactionSource.TASKER_SMS
+                TransactionSource.TASKER_SMS,
+                true
         );
         if (invalid != null) {
             return invalid;
@@ -223,7 +225,8 @@ public class PaymentService {
     private PaymentDecisionResponse validateParsedPayment(
             String tenantId,
             ParsedPaymentRequest payment,
-            TransactionSource expectedSource
+            TransactionSource expectedSource,
+            boolean requireReceivedType
     ) {
         if (payment.source() != expectedSource) {
             return PaymentDecisionResponse.rejected(
@@ -252,7 +255,8 @@ public class PaymentService {
             );
         }
 
-        if (payment.type() != TransactionType.RECEIVED) {
+        if ((requireReceivedType && payment.type() != TransactionType.RECEIVED)
+                || (!requireReceivedType && payment.type() == TransactionType.UNKNOWN)) {
             return PaymentDecisionResponse.rejected(
                     tenantId,
                     null,
