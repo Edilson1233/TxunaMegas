@@ -14,6 +14,7 @@ security:
 tags:
   - name: Tenant Context
   - name: Payments
+  - name: Catalog
   - name: USSD
   - name: Audit
 
@@ -117,6 +118,215 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           $ref: "#/components/responses/Unprocessable"
+
+  /internal/v1/tenants/{tenantId}/catalog/products:
+    get:
+      tags: [Catalog]
+      summary: Lista produtos vendaveis do tenant.
+      operationId: listProducts
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Produtos do tenant.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Catalog]
+      summary: Cria produto vendavel para o tenant.
+      operationId: createProduct
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreateRequest"
+      responses:
+        "201":
+          description: Produto criado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/tenants/{tenantId}/catalog/products/{productId}:
+    patch:
+      tags: [Catalog]
+      summary: Atualiza campos editaveis de um produto.
+      operationId: updateProduct
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/ProductId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdateRequest"
+      responses:
+        "200":
+          description: Produto atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/tenants/{tenantId}/catalog/products/{productId}/packages:
+    get:
+      tags: [Catalog]
+      summary: Lista pacotes de um produto.
+      operationId: listProductPackages
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/ProductId"
+      responses:
+        "200":
+          description: Pacotes do produto.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogPackageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Catalog]
+      summary: Cria pacote para um produto.
+      operationId: createProductPackage
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/ProductId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogPackageCreateRequest"
+      responses:
+        "201":
+          description: Pacote criado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogPackageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/tenants/{tenantId}/catalog/packages/{packageId}:
+    patch:
+      tags: [Catalog]
+      summary: Atualiza campos editaveis de um pacote.
+      operationId: updateProductPackage
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PackageId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogPackageUpdateRequest"
+      responses:
+        "200":
+          description: Pacote atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogPackageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/tenants/{tenantId}/catalog/packages/{packageId}/prices:
+    get:
+      tags: [Catalog]
+      summary: Lista precos de um pacote.
+      operationId: listPackagePrices
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PackageId"
+      responses:
+        "200":
+          description: Precos do pacote.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PriceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Catalog]
+      summary: Cria novo preco para um pacote.
+      description: >
+        O Core fecha precos abertos anteriores do mesmo pacote em validFrom
+        do novo preco para evitar dois precos correntes simultaneos.
+      operationId: createPackagePrice
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PackageId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceCreateRequest"
+      responses:
+        "201":
+          description: Preco criado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /internal/v1/ussd-commands:
     post:
@@ -239,6 +449,29 @@ components:
         minLength: 16
         maxLength: 128
       description: Chave unica por operacao externa para permitir retry seguro.
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Tenant dono do recurso.
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Produto do catalogo.
+    PackageId:
+      name: packageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Pacote do catalogo.
 
   responses:
     BadRequest:
@@ -433,11 +666,178 @@ components:
         destinationNumber:
           type: string
           nullable: true
+        deliveryAmount:
+          type: integer
+          nullable: true
+          description: Quantidade em MB que o Node deve enviar no USSD.
         ussdCommand:
           allOf:
             - $ref: "#/components/schemas/UssdCommandResponse"
           nullable: true
         checkedAt:
+          type: string
+          format: date-time
+
+    ProductCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 160
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CatalogStatus"
+
+    ProductUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 160
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CatalogStatus"
+
+    ProductResponse:
+      type: object
+      required: [id, tenantId, name, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CatalogStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CatalogPackageCreateRequest:
+      type: object
+      required: [name, allowanceMb]
+      properties:
+        name:
+          type: string
+          maxLength: 160
+        allowanceMb:
+          type: integer
+          minimum: 1
+        validityDays:
+          type: integer
+          minimum: 1
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CatalogStatus"
+
+    CatalogPackageUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 160
+          nullable: true
+        allowanceMb:
+          type: integer
+          minimum: 1
+          nullable: true
+        validityDays:
+          type: integer
+          minimum: 1
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CatalogStatus"
+
+    CatalogPackageResponse:
+      type: object
+      required: [id, tenantId, productId, name, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+        productId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        allowanceMb:
+          type: integer
+          nullable: true
+        validityDays:
+          type: integer
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CatalogStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PriceCreateRequest:
+      type: object
+      required: [amount, validFrom]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          nullable: true
+          default: MZN
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+          nullable: true
+
+    PriceResponse:
+      type: object
+      required: [id, tenantId, packageId, amount, currency, validFrom, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+        packageId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
           type: string
           format: date-time
 
@@ -571,6 +971,9 @@ components:
     TransactionSource:
       type: string
       enum: [WHATSAPP_TEXT, TASKER_SMS]
+    CatalogStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
     PaymentDecision:
       type: string
       enum:

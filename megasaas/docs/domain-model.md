@@ -177,6 +177,21 @@ Campos principais:
 - `valid_to`.
 - `created_at`.
 
+API interna atual:
+
+- `GET /internal/v1/tenants/{tenantId}/catalog/products`.
+- `POST /internal/v1/tenants/{tenantId}/catalog/products`.
+- `PATCH /internal/v1/tenants/{tenantId}/catalog/products/{productId}`.
+- `GET /internal/v1/tenants/{tenantId}/catalog/products/{productId}/packages`.
+- `POST /internal/v1/tenants/{tenantId}/catalog/products/{productId}/packages`.
+- `PATCH /internal/v1/tenants/{tenantId}/catalog/packages/{packageId}`.
+- `GET /internal/v1/tenants/{tenantId}/catalog/packages/{packageId}/prices`.
+- `POST /internal/v1/tenants/{tenantId}/catalog/packages/{packageId}/prices`.
+
+Nota operacional:
+
+- Ao criar um preco novo para um pacote, o Core fecha precos abertos anteriores do mesmo pacote em `valid_from` do novo preco. Isto evita manter dois precos correntes para o mesmo pacote.
+
 ### orders
 
 Pedido de compra do cliente final.
@@ -195,7 +210,8 @@ Campos principais:
 
 Nota:
 
-- No estado atual, o Node infere um pedido diretamente do comprovativo. Na migracao, Spring deve persistir esse pedido mesmo quando ainda nao existir catalogo completo.
+- No estado atual, o Node ainda pode inferir um pedido diretamente do comprovativo quando o Core nao esta configurado.
+- Quando o Core processa pagamentos, ele cria o pedido e tenta associar `package_id` a partir de `prices.amount` + `product_packages.allowance_mb` ativos do tenant. Se nao houver preco compativel, o pedido ainda pode existir sem pacote para permitir correcao operacional.
 
 ### payments
 
