@@ -19,21 +19,30 @@ WhatsApp — é validado por leitura real do SMS do M-Pesa através de um dispos
 com Tasker, que reporta ao backend via HTTP. Após validação, o backend ordena ao Tasker
 que execute o USSD de transferência de megas (`*111#` ou equivalente).
 
-## 2. ARQUITETURA (decisão fixa — não renegociar sem motivo forte)
+## 2. ARQUITETURA (direção atual — não renegociar sem motivo forte)
 
 ```
-[Cliente WhatsApp] → [Node.js WhatsApp Layer] → [EventBus] → [BullMQ/Redis] → [Spring Boot Core]
-                                                                                      │
-[Tasker Android] ←──── HTTP commands (USSD) ←──── [Spring Boot Core] ←── valida SMS ──┘
-                              │
-                         POST /tasker/sms (transactionId, amount, rawSms, timestamp)
+[Cliente WhatsApp] -> [Node.js Automation/Integration Gateway] -> REST autenticado -> [Spring Boot Core]
+                                      ^
+                                      |
+[MacroDroid/Tasker Android] -> SMS/ACK/USSD polling HTTP
+                                      |
+                                      v
+                              [Node.js USSD workers]
+
+[Spring Boot Core] -> PostgreSQL
+[Node.js Gateway]  -> Redis/BullMQ no futuro para filas, retries e jobs
 ```
 
 - **Multi-tenancy**: isolamento lógico por `tenantId` em todas as camadas (DB, filas, eventos).
-- **Event-driven**: Node.js e Spring Boot não se chamam diretamente — comunicam via
-  eventos/filas (Redis + BullMQ). Isto permite escalar cada camada de forma independente.
-- **Node.js** = camada de mensageria (WhatsApp). Não contém regras de negócio de pagamento.
-- **Spring Boot** = core de negócio (validação de pagamento, billing, multi-tenancy, admin).
+- **Integração Node -> Core atual**: REST autenticado por Bearer token interno e
+  `Idempotency-Key`. Arquitetura orientada a eventos fica como evolução futura, se houver
+  necessidade real.
+- **Node.js** = Automation/Integration Gateway: WhatsApp/Baileys, SMS/MacroDroid/Tasker,
+  parsing técnico, sessões, dispositivos, USSD, workers e integrações externas.
+- **Spring Boot** = Core/System of Record: tenants, utilizadores, RBAC, clientes,
+  produtos/pacotes, preços, pedidos, pagamentos, subscrições, billing, auditoria e APIs
+  admin/dashboard.
 - **Tasker** = única fonte de verdade para confirmação de pagamento e execução de USSD.
   O backend NUNCA confia em texto vindo do WhatsApp para liberar megas.
 
@@ -69,12 +78,14 @@ deve:
    acionar USSD via Tasker → responder "megas já transferidos" após confirmação.
 3. Se NÃO encontrar → responder de forma técnica que o pedido não foi recebido, que o
    cliente deve aguardar um pouco, e que pode contactar o suporte se demorar.
-- Decisão em aberto para a Fase 4/5: no caso "não encontrada", decidir se há uma
-  tentativa automática de nova verificação (esperar alguns segundos, pois pode ser
-  apenas atraso do Tasker a reportar) antes de responder definitivamente que não foi
-  encontrada.
-- Mecanismo de envio (`sendText`) já existe desde a Fase 1 (`WhatsAppProvider`) — só
-  falta a lógica de decisão (Fase 4) e os dados reais para decidir (Fase 5).
+- Estado atual: o envio real de respostas pelo WhatsApp já está ligado ao
+  `PurchaseFlowCoordinator`; a fila USSD usa ACK do MacroDroid/Tasker para concluir ou
+  falhar o pedido.
+- O cruzamento é bidirecional: se o SMS real chegar antes do comprovativo no WhatsApp,
+  a transação fica como órfã temporária e pode ser cruzada quando o cliente enviar a
+  mensagem depois.
+- O valor digitado no USSD deve ser `deliveryAmount` resolvido pela tabela de preços do
+  tenant no Core, não o valor monetário transferido pelo cliente.
 
 ## 3. CONTRATO Tasker ↔ Backend (fixo desde a Fase 1, usado por todas as fases seguintes)
 
@@ -111,8 +122,8 @@ ou
 | 2 | Parser M-Pesa robusto | Node.js |
 | 3 | DTOs/modelos: Transaction, PaymentVerification, TenantContext, ParserResult | Node.js + Java |
 | 4 | SessionManager + PendingTransactionManager | Node.js |
-| 5 | Integração Tasker (SMS in / USSD out) | Node.js + Spring Boot |
-| 6 | Integração Spring Boot (core de negócio) | Java |
+| 5 | Integração Tasker/MacroDroid (SMS in / USSD out) | Node.js |
+| 6 | Integração Spring Boot (core de negócio + REST interno) | Node.js + Java |
 | 7 | Redis + BullMQ (filas entre camadas) | Node.js + Java |
 | 8 | Multi-tenancy, billing, painel admin | Java + Frontend |
 
@@ -124,6 +135,9 @@ contratos (interfaces/DTOs) estáveis, para que a fase seguinte nunca exija rees
   e escalável horizontalmente) em vez de whatsapp-web.js.
 - Comunicação interna Node.js: `EventEmitter` local na Fase 1 (trocado por BullMQ na Fase 7)
   — a interface pública do EventBus já é desenhada para não mudar quando isso acontecer.
+- Comunicação Node.js -> Spring Boot: REST autenticado na Fase 6, com `Idempotency-Key`.
+  Redis/BullMQ não deve ser usado como protocolo direto Java ↔ Node; fica reservado para
+  filas, retries e jobs do lado Node.
 - Linguagem dos comentários/commits: português (PT-MZ), nomes de variáveis em inglês (padrão da indústria).
 - Multi-dispositivo/multi-tenant WhatsApp: adiado para a Fase 8 (ver secção 2 acima).
 - Parser M-Pesa: baseado em padrões de regex por tipo de SMS (estratégia extensível —
@@ -188,3 +202,12 @@ O utilizador partilhou capturas de ecrã de um bot concorrente já em produção
 
 ## 8. ESTADO ATUAL
 Ver `ROADMAP.md` neste mesmo pacote — é o ficheiro que se atualiza a cada fase concluída.
+
+Resumo operacional atual:
+- Fase 6 está em curso.
+- Node já consegue delegar claims/confirmations ao Core via REST quando `CORE_API_BASE_URL`
+  está configurado.
+- Core já guarda pagamentos/pedidos e resolve `deliveryAmount` a partir de produtos,
+  pacotes e preços do tenant.
+- API interna de catálogo já existe para produtos, pacotes e preços.
+- Testes mais recentes registados: 99 testes Node e 20 testes Core a passar.

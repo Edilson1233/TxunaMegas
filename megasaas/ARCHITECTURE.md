@@ -8,7 +8,7 @@ Este documento descreve o estado real observado no código e a direção arquite
 
 ## Estado Atual
 
-O projeto implementado hoje tem dois módulos: o gateway Node.js existente e um esqueleto inicial Spring Boot em `core/`. O fluxo funcional continua no Node.js; o core Java ainda não está integrado ao gateway. PostgreSQL já está modelado via Flyway no core, mas não há base de dados local provisionada neste repositório. Redis/BullMQ ainda não foi implementado.
+O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp e confirmacoes SMS ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo em memoria para testes locais com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core, mas nao ha base de dados local provisionada neste repositorio. Redis/BullMQ ainda nao foi implementado; a fila USSD ja foi isolada por `UssdCommandStore` para permitir essa troca.
 
 Fluxo real atual:
 
@@ -29,6 +29,7 @@ Tasker/MacroDroid
   -> taskerHandlers.handleSmsReport
   -> MpesaParser
   -> PendingTransactionManager.resolveWithRealTransaction
+  -> opcional: Spring Core /internal/v1/payment-confirmations/sms
   -> EventBus
   -> PurchaseFlowCoordinator
 ```
@@ -100,15 +101,22 @@ Existe também `src/core/ussd/`, atualmente vazio.
 - Pending transactions em memória, com suporte a WhatsApp primeiro ou SMS primeiro.
 - Idempotência em memória por `externalTransactionId` usado.
 - Fila USSD em memória, polling por `GET /api/v1/tasker/commands/next` e ACK por `POST /api/v1/tasker/commands/:commandId/ack`.
+- Integração opcional Node -> Spring Core para claims de pagamento e confirmações SMS, com idempotência persistida no Core.
+- Spring Core com autenticação interna Bearer token para `/internal/**`.
+- Spring Core com tenant context por instância WhatsApp.
+- Spring Core com modelo relacional de produtos, pacotes, preços, pedidos, pagamentos, claims, confirmações, comandos USSD e auditoria.
+- Spring Core resolve `deliveryAmount` a partir de `prices.amount` e `product_packages.allowance_mb` ativos do tenant.
+- Spring Core expõe API interna mínima de catálogo para criar/listar/atualizar produtos, pacotes e preços por tenant.
 
 ## Limites E Dívida Técnica
 
 - Não há persistência durável; reiniciar o processo perde sessões, pending claims, órfãs, idempotência, rate limit e fila USSD.
-- Spring Boot existe apenas como esqueleto inicial; ainda não é System of Record do fluxo real.
-- Há modelo relacional via Flyway, mas ainda não há PostgreSQL provisionado nem integração Node -> Spring.
+- Spring Boot já tem os primeiros contratos de System of Record para pagamentos e catálogo, mas ainda não cobre todo o domínio SaaS.
+- Há modelo relacional via Flyway, mas ainda não há PostgreSQL local provisionado neste repositório.
 - Não há Redis/BullMQ, retries persistentes, dead-letter queue, locks distribuídos ou timeouts robustos para comandos `DISPATCHED`.
-- Não há multi-tenant real; `TenantContext.resolveForInstance()` devolve sempre `default-tenant`.
-- Não há utilizadores, RBAC, dashboard/admin, produtos, pacotes, preços, pedidos formais, subscrições, billing ou auditoria.
+- Multi-tenant existe no schema e no tenant context do Core, mas ainda não há RBAC completo nem dashboard/admin.
+- Produtos, pacotes e preços já existem no Core por API interna; ainda falta UI/admin real para o revendedor editar sem chamada técnica.
+- Ainda não há utilizadores funcionais, RBAC, clientes completos, subscrições, billing ou auditoria operacional consumida por tela.
 - `PaymentProvider.EMOLA` existe como valor reservado, mas não há parser e-Mola.
 - Não há comando WhatsApp como `.tabela`, `.pagar`, `.abrir` ou `.fechar`.
 - `package.json` ainda descreve fases antigas e as dependências não estavam instaladas no ambiente analisado.
@@ -185,8 +193,10 @@ Artefactos criados para iniciar esta migração:
 
 - `contracts/core-api.openapi.yaml`: contrato REST interno Node -> Spring Boot.
 - `docs/domain-model.md`: modelo mínimo de domínio/persistência do Spring Boot Core.
+- `docs/local-core-seed.md`: instruções para semear dados locais de tenant, dispositivo, produto, pacote e preço.
+- `docs/mobile-core-flow-test.md`: roteiro para testar telemóvel + MacroDroid usando preços do Core.
 - `core/`: Spring Boot Core iniciado com autenticação interna, endpoint de tenant context,
-  endpoints internos de pagamentos, idempotência persistida e migration PostgreSQL.
+  endpoints internos de pagamentos, catálogo, idempotência persistida e migration PostgreSQL.
 
 ## Validação Atual
 
@@ -196,6 +206,13 @@ Testes executados no diagnóstico:
 npm.cmd test
 ```
 
-Resultado observado: 75 testes passaram, 0 falharam.
+Resultado Node observado: 99 testes passaram, 0 falharam.
+
+```powershell
+cd core
+.\mvnw.cmd test
+```
+
+Resultado Core observado: 20 testes passaram, 0 falharam.
 
 Nota: `npm test` no PowerShell pode falhar por bloqueio de `npm.ps1`; usar `npm.cmd test` nesse ambiente.

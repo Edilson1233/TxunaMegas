@@ -279,23 +279,38 @@ Testes novos: 2 casos (confirma que `registerClaim` não emite o evento na órf�
 confirma que `resolveWithRealTransaction` continua a emitir exatamente uma vez).
 Total final: **75 testes**.
 
-### 🚧 FASE 6 — Integração Spring Boot (iniciada)
+### 🚧 FASE 6 — Integração Spring Boot (em curso)
 - Entregue primeiro incremento em `core/`: projeto Maven Spring Boot, configuração de aplicação,
   autenticação interna simples por Bearer token para `/internal/**`, endpoint inicial
   `GET /internal/v1/tenant-context/whatsapp-instances/{instanceId}` e testes Java
   correspondentes.
-- Entregue segundo incremento no core: endpoints `POST /internal/v1/payment-claims` e
+- Entregue segundo incremento no Core: endpoints `POST /internal/v1/payment-claims` e
   `POST /internal/v1/payment-confirmations/sms`, serviço de decisão de pagamento,
   repositório JDBC, replay por `Idempotency-Key` e testes unitários do serviço.
 - Entregue migration inicial `V1__create_core_schema.sql` com o modelo relacional alvo para
   tenants, utilizadores, memberships, instâncias WhatsApp, dispositivos de automação,
   idempotência, clientes, produtos/pacotes/preços, pedidos, pagamentos, claims,
   confirmações SMS, comandos USSD e auditoria.
-- O fluxo funcional ainda continua no Node.js. O core ainda não está integrado ao gateway.
-- Validação local: `pom.xml` parseado com sucesso; `npm.cmd test` continua com 75 testes a
-  passar. `mvn test` não pôde ser executado porque Maven não está instalado/não está no PATH
-  nesta máquina.
-### ⏳ FASE 7 — Redis e BullMQ (não iniciada)
+- Entregue integração opcional Node -> Core por REST autenticado: quando `CORE_API_BASE_URL`
+  está configurado, o gateway delega claims/confirmations ao Core e mantém fallback local
+  para desenvolvimento sem Core.
+- Entregue resolução de pacote/preço no Core: o valor pago pelo cliente (`paymentAmount`)
+  é cruzado com a tabela de preços do tenant e o comando USSD recebe `deliveryAmount`
+  (ex.: 15.00MT -> 600MB), em vez de repetir o valor monetário.
+- Entregue API interna de catálogo no Core para produtos, pacotes e preços:
+  `/internal/v1/tenants/{tenantId}/catalog/**`, com validações de estado, validade de preço
+  e encerramento automático do preço aberto anterior do mesmo pacote.
+- Entregue seed local fora do Flyway (`core/src/main/resources/db/seed/local-dev.sql`) para
+  testar Core + PostgreSQL + Node + MacroDroid com tenant/dispositivo/pacotes reais.
+- Documentação e contrato atualizados: `ARCHITECTURE.md`, `docs/local-core-seed.md`,
+  `docs/mobile-core-flow-test.md` e `contracts/core-api.openapi.yaml`.
+- Validação local mais recente: `npm.cmd test` com 99 testes Node a passar e
+  `.\mvnw.cmd test` com 20 testes Core a passar.
+### 🚧 FASE 7 — Redis e BullMQ (preparação iniciada)
+- Entregue primeiro incremento preparatório no Node: `UssdCommandQueue` deixou de guardar
+  comandos diretamente num `Map` interno e passou a usar o contrato `UssdCommandStore`.
+  O comportamento continua igual com `InMemoryUssdCommandStore`, mas a fronteira para
+  substituir por Redis/BullMQ ficou explícita e testada.
 ### ⏳ FASE 8 — Multi-tenancy, billing, painel admin (não iniciada)
   - Inclui: decisão final sobre 1 instância WhatsApp por tenant vs. pool partilhado
     (ver PROJECT_CONTEXT.md secção 2).
