@@ -3,11 +3,21 @@ import assert from 'node:assert/strict';
 import { UssdCommandQueue } from '../src/tasker/UssdCommandQueue.js';
 import { UssdCommandStatus } from '../src/tasker/UssdCommand.js';
 import { UssdEvents } from '../src/tasker/UssdEvents.js';
+import { InMemoryUssdCommandStore } from '../src/tasker/InMemoryUssdCommandStore.js';
 
 test('enqueue adiciona comando em PENDING', () => {
   const queue = new UssdCommandQueue({});
   const command = queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
   assert.equal(command.status, UssdCommandStatus.PENDING);
+});
+
+test('enqueue usa store injetado pela fila USSD', () => {
+  const store = new InMemoryUssdCommandStore();
+  const queue = new UssdCommandQueue({ store });
+
+  const command = queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
+
+  assert.equal(store.get(command.id), command);
 });
 
 test('dequeueNext devolve o comando pendente e marca DISPATCHED', () => {

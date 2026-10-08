@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { UssdCommand, UssdCommandStatus } from './UssdCommand.js';
 import { UssdEvents } from './UssdEvents.js';
+import { InMemoryUssdCommandStore } from './InMemoryUssdCommandStore.js';
 
 const DEFAULT_DISPATCH_TIMEOUT_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 1;
@@ -11,23 +12,24 @@ const DEFAULT_MAX_ATTEMPTS = 1;
  * Fila de comandos USSD pendentes de execução pelo Tasker.
  *
  * RISCO CONHECIDO (documentado, igual ao padrão das fases anteriores):
- * implementação em memória (Map, ordem de inserção) — perde-se com reinício
- * do processo. A Fase 7 substitui por BullMQ (fila persistente, com
- * retries automáticos se o Tasker não confirmar a tempo).
+ * por defeito usa InMemoryUssdCommandStore, que perde dados com reinício do
+ * processo. A Fase 7 troca o store por persistência/fila real.
  */
 export class UssdCommandQueue {
-  #commands = new Map();
+  #store;
   #eventBus;
   #logger;
   #dispatchTimeoutMs;
   #maxAttempts;
 
   constructor({
+    store = new InMemoryUssdCommandStore(),
     eventBus,
     logger,
     dispatchTimeoutMs = DEFAULT_DISPATCH_TIMEOUT_MS,
     maxAttempts = DEFAULT_MAX_ATTEMPTS,
   } = {}) {
+    this.#store = store;
     this.#eventBus = eventBus;
     this.#logger = logger;
     this.#dispatchTimeoutMs =
@@ -45,7 +47,7 @@ export class UssdCommandQueue {
       paymentAmount,
       deliveryAmount,
     });
-    this.#commands.set(command.id, command);
+    this.#store.save(command);
     this.#logger?.info(
       { commandId: command.id, transactionId, destinationNumber },
       '[UssdCommandQueue] comando USSD colocado na fila'
@@ -55,11 +57,12 @@ export class UssdCommandQueue {
 
   /** Chamado pelo endpoint que o Tasker usa para pedir o próximo trabalho. */
   dequeueNext() {
-    for (const command of this.#commands.values()) {
+    for (const command of this.#store.list()) {
       if (command.status === UssdCommandStatus.PENDING) {
         command.status = UssdCommandStatus.DISPATCHED;
         command.attemptCount += 1;
         command.dispatchedAt = new Date().toISOString();
+        this.#store.save(command);
         this.#eventBus?.emit(UssdEvents.DISPATCHED, { command });
         return command;
       }
@@ -69,11 +72,11 @@ export class UssdCommandQueue {
 
   /** Chamado pelo endpoint de confirmação (sucesso ou falha da execução). */
   ack(commandId, { success, details = null }) {
-    const command = this.#commands.get(commandId);
+    const command = this.#store.get(commandId);
     if (!command) return null;
 
     command.status = success ? UssdCommandStatus.COMPLETED : UssdCommandStatus.FAILED;
-    this.#commands.delete(commandId);
+    this.#store.delete(commandId);
 
     const eventName = success ? UssdEvents.COMPLETED : UssdEvents.FAILED;
     this.#eventBus?.emit(eventName, { command, details });
@@ -81,7 +84,7 @@ export class UssdCommandQueue {
   }
 
   ackMatchingTransfer({ transaction, details = 'SMS Transferiste confirmou execucao USSD' }) {
-    for (const command of this.#commands.values()) {
+    for (const command of this.#store.list()) {
       if (command.status !== UssdCommandStatus.DISPATCHED) continue;
       if (Number(command.paymentAmount) !== Number(transaction.amount) && Number(command.deliveryAmount) !== Number(transaction.amount)) continue;
       if (!samePhone(command.destinationNumber, transaction.counterpartyPhone)) continue;
@@ -95,7 +98,7 @@ export class UssdCommandQueue {
   checkTimedOut(now = Date.now()) {
     const affected = [];
 
-    for (const command of this.#commands.values()) {
+    for (const command of this.#store.list()) {
       if (command.status !== UssdCommandStatus.DISPATCHED) continue;
 
       const dispatchedAt = Date.parse(command.dispatchedAt);
@@ -107,6 +110,7 @@ export class UssdCommandQueue {
       if (command.attemptCount < this.#maxAttempts) {
         command.status = UssdCommandStatus.PENDING;
         command.dispatchedAt = null;
+        this.#store.save(command);
         this.#logger?.warn(
           {
             commandId: command.id,
@@ -120,7 +124,7 @@ export class UssdCommandQueue {
       }
 
       command.status = UssdCommandStatus.TIMED_OUT;
-      this.#commands.delete(command.id);
+      this.#store.delete(command.id);
       this.#logger?.error(
         {
           commandId: command.id,
