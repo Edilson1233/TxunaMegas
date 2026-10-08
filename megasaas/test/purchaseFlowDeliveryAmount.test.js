@@ -52,7 +52,7 @@ test('pagamento de 15MT gera comando USSD com 600MB quando tabela temporaria est
   await pendingTransactionManager.resolveWithRealTransaction(realTransaction);
   await new Promise((resolve) => setImmediate(resolve));
 
-  const command = ussdCommandQueue.dequeueNext();
+  const command = await ussdCommandQueue.dequeueNext();
   assert.equal(command.paymentAmount, 15);
   assert.equal(command.deliveryAmount, 600);
   assert.equal(command.amount, 600);

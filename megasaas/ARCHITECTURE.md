@@ -8,7 +8,7 @@ Este documento descreve o estado real observado no código e a direção arquite
 
 ## Estado Atual
 
-O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp e confirmacoes SMS ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo em memoria para testes locais com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core, mas nao ha base de dados local provisionada neste repositorio. Redis/BullMQ ainda nao foi implementado; a fila USSD ja foi isolada por `UssdCommandStore` para permitir essa troca.
+O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp e confirmacoes SMS ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo em memoria para testes locais com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core e ha um `compose.yaml` local para PostgreSQL + Redis. Redis/BullMQ ainda nao foi implementado; a fila USSD ja foi isolada por `UssdCommandStore` assincrono para permitir essa troca.
 
 Fluxo real atual:
 
@@ -113,7 +113,7 @@ Existe também `src/core/ussd/`, atualmente vazio.
 - Não há persistência durável; reiniciar o processo perde sessões, pending claims, órfãs, idempotência, rate limit e fila USSD.
 - Spring Boot já tem os primeiros contratos de System of Record para pagamentos e catálogo, mas ainda não cobre todo o domínio SaaS.
 - Há modelo relacional via Flyway, mas ainda não há PostgreSQL local provisionado neste repositório.
-- Não há Redis/BullMQ, retries persistentes, dead-letter queue, locks distribuídos ou timeouts robustos para comandos `DISPATCHED`.
+- Ainda não há BullMQ, retries persistentes, dead-letter queue, locks distribuídos ou timeouts robustos para comandos `DISPATCHED`. Redis já está provisionado localmente via Compose, mas ainda não é usado em runtime.
 - Multi-tenant existe no schema e no tenant context do Core, mas ainda não há RBAC completo nem dashboard/admin.
 - Produtos, pacotes e preços já existem no Core por API interna; ainda falta UI/admin real para o revendedor editar sem chamada técnica.
 - Ainda não há utilizadores funcionais, RBAC, clientes completos, subscrições, billing ou auditoria operacional consumida por tela.
@@ -184,7 +184,7 @@ Comunicação inicial Node ↔ Spring Boot: REST API autenticada. Arquitetura or
 2. Criar Spring Boot mínimo com PostgreSQL, migrations e entidades: tenant, device, customer, order, payment, ussd_command/audit_event.
 3. Migrar idempotência para PostgreSQL com chave única por `tenantId + provider + externalTransactionId`.
 4. Manter WhatsApp, Tasker e parser no Node, mas delegar decisões persistentes ao Spring.
-5. Introduzir Redis/BullMQ no Node para fila USSD com retry, timeout, backoff e dead-letter.
+5. Introduzir adaptador Redis/BullMQ no Node para fila USSD com retry, timeout, backoff e dead-letter.
 6. Substituir stores em memória por adaptadores reais, mantendo interfaces onde fizer sentido.
 7. Implementar credenciais por dispositivo/tenant e rate limiting distribuído.
 8. Adicionar catálogo de pacotes, preços, comandos WhatsApp, e-Mola, dashboard/admin e billing.

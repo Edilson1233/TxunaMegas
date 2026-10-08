@@ -7,19 +7,19 @@
  * armazenamento persistente/partilhado, mantendo a API de UssdCommandQueue.
  */
 export class UssdCommandStore {
-  save(_command) {
+  async save(_command) {
     throw new Error('[UssdCommandStore] save() nao implementado');
   }
 
-  get(_commandId) {
+  async get(_commandId) {
     throw new Error('[UssdCommandStore] get() nao implementado');
   }
 
-  delete(_commandId) {
+  async delete(_commandId) {
     throw new Error('[UssdCommandStore] delete() nao implementado');
   }
 
-  list() {
+  async list() {
     throw new Error('[UssdCommandStore] list() nao implementado');
   }
 }

@@ -41,7 +41,7 @@ test('timeout final de comando USSD emite falha e desbloqueia sessao em processa
     currentTransactionId: 'TX1',
   });
   await sessionManager.transition('chat1', SessionState.PROCESSING);
-  ussdCommandQueue.enqueue({
+  await ussdCommandQueue.enqueue({
     transactionId: 'TX1',
     contextKey: 'chat1',
     destinationNumber: '859253929',
@@ -49,10 +49,10 @@ test('timeout final de comando USSD emite falha e desbloqueia sessao em processa
     deliveryAmount: 600,
   });
 
-  const command = ussdCommandQueue.dequeueNext();
+  const command = await ussdCommandQueue.dequeueNext();
   const now = Date.now();
   command.dispatchedAt = new Date(now - 11).toISOString();
-  ussdCommandQueue.checkTimedOut(now);
+  await ussdCommandQueue.checkTimedOut(now);
   await new Promise((resolve) => setImmediate(resolve));
 
   const session = await sessionManager.getOrCreate('chat1');

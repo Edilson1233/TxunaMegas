@@ -84,7 +84,7 @@ async function main() {
   expiryInterval.unref();
 
   const ussdCommandTimeoutInterval = setInterval(() => {
-    ussdCommandQueue.checkTimedOut();
+    ussdCommandQueue.checkTimedOut().catch((err) => logger.error({ err }, '[main] falha ao verificar timeout de USSD'));
   }, EXPIRY_CHECK_INTERVAL_MS);
   ussdCommandTimeoutInterval.unref();
 

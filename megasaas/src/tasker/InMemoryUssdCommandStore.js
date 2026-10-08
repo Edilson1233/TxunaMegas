@@ -9,20 +9,20 @@ import { UssdCommandStore } from './UssdCommandStore.js';
 export class InMemoryUssdCommandStore extends UssdCommandStore {
   #commands = new Map();
 
-  save(command) {
+  async save(command) {
     this.#commands.set(command.id, command);
     return command;
   }
 
-  get(commandId) {
+  async get(commandId) {
     return this.#commands.get(commandId) ?? null;
   }
 
-  delete(commandId) {
+  async delete(commandId) {
     return this.#commands.delete(commandId);
   }
 
-  list() {
+  async list() {
     return [...this.#commands.values()];
   }
 }

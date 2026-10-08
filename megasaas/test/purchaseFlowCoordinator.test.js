@@ -124,12 +124,12 @@ test('Fase 5 — ciclo ponta-a-ponta: verificação -> comando USSD -> ack suces
   await pendingTransactionManager.resolveWithRealTransaction(buildRealTransaction(tenantContext));
   await new Promise((resolve) => setImmediate(resolve));
 
-  const command = ussdCommandQueue.dequeueNext();
+  const command = await ussdCommandQueue.dequeueNext();
   assert.ok(command, 'comando USSD devia ter sido enfileirado ao verificar com sucesso');
   // REAL_SMS já inclui um número de destino explícito no fim.
   assert.equal(command.destinationNumber, '843112233');
 
-  ussdCommandQueue.ack(command.id, { success: true });
+  await ussdCommandQueue.ack(command.id, { success: true });
   await new Promise((resolve) => setImmediate(resolve));
 
   const session = await sessionManager.getOrCreate('chat1');
@@ -145,8 +145,8 @@ test('Fase 5 — ciclo ponta-a-ponta: falha na execução do USSD leva a NOT_FOU
   await pendingTransactionManager.resolveWithRealTransaction(buildRealTransaction(tenantContext));
   await new Promise((resolve) => setImmediate(resolve));
 
-  const command = ussdCommandQueue.dequeueNext();
-  ussdCommandQueue.ack(command.id, { success: false, details: 'USSD timeout' });
+  const command = await ussdCommandQueue.dequeueNext();
+  await ussdCommandQueue.ack(command.id, { success: false, details: 'USSD timeout' });
   await new Promise((resolve) => setImmediate(resolve));
 
   const session = await sessionManager.getOrCreate('chat1');
@@ -166,7 +166,7 @@ test('Fase 5 — número de destino explícito no texto do cliente é respeitado
   await pendingTransactionManager.resolveWithRealTransaction(buildRealTransaction(tenantContext));
   await new Promise((resolve) => setImmediate(resolve));
 
-  const command = ussdCommandQueue.dequeueNext();
+  const command = await ussdCommandQueue.dequeueNext();
   assert.equal(command.destinationNumber, '859253929');
 });
 
@@ -186,7 +186,7 @@ test('correção real: SMS real chega ANTES da mensagem do WhatsApp — sessão 
   const session = await sessionManager.getOrCreate('chat1');
   assert.equal(session.state, SessionState.PROCESSING); // cruzamento imediato, sem esperar por nenhum evento
 
-  const command = ussdCommandQueue.dequeueNext();
+  const command = await ussdCommandQueue.dequeueNext();
   assert.ok(command, 'comando USSD devia ter sido enfileirado no cruzamento imediato');
 });
 
@@ -225,8 +225,8 @@ test('Fase 5 — respostas reais são enviadas ao WhatsApp em cada etapa do flux
   await pendingTransactionManager.resolveWithRealTransaction(buildRealTransaction(tenantContext));
   await new Promise((resolve) => setImmediate(resolve));
 
-  const command = ussdCommandQueue.dequeueNext();
-  ussdCommandQueue.ack(command.id, { success: true });
+  const command = await ussdCommandQueue.dequeueNext();
+  await ussdCommandQueue.ack(command.id, { success: true });
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(sentMessages.length, 2); // "pedido recebido" + "megas transferidos"
@@ -265,7 +265,7 @@ test('correção real: cliente esquece o número de destino — bot pede, client
   await pendingTransactionManager.resolveWithRealTransaction(realTransaction);
   await new Promise((resolve) => setImmediate(resolve));
 
-  const command = ussdCommandQueue.dequeueNext();
+  const command = await ussdCommandQueue.dequeueNext();
   assert.ok(command);
   assert.equal(command.destinationNumber, '859253929');
 });

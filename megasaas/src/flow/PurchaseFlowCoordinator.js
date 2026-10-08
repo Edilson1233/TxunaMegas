@@ -237,13 +237,15 @@ export class PurchaseFlowCoordinator {
 
     const deliveryAmount = this.#resolveDeliveryAmount(transaction);
 
-    this.#ussdCommandQueue?.enqueue({
-      transactionId: transaction.externalTransactionId,
-      contextKey,
-      destinationNumber: transaction.destinationNumber,
-      paymentAmount: transaction.amount,
-      deliveryAmount,
-    });
+    if (this.#ussdCommandQueue) {
+      await this.#ussdCommandQueue.enqueue({
+        transactionId: transaction.externalTransactionId,
+        contextKey,
+        destinationNumber: transaction.destinationNumber,
+        paymentAmount: transaction.amount,
+        deliveryAmount,
+      });
+    }
     // Sem mensagem extra aqui — "claimRegistered" já avisou o cliente que
     // está em processamento; a próxima mensagem só chega quando o USSD terminar.
   }

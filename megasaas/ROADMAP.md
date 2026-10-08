@@ -311,6 +311,13 @@ Total final: **75 testes**.
   comandos diretamente num `Map` interno e passou a usar o contrato `UssdCommandStore`.
   O comportamento continua igual com `InMemoryUssdCommandStore`, mas a fronteira para
   substituir por Redis/BullMQ ficou explícita e testada.
+- Entregue infraestrutura local inicial: `compose.yaml` na raiz sobe PostgreSQL e Redis
+  com volumes persistentes, `REDIS_URL` foi documentado no `.env.example`, e
+  `docs/local-infrastructure.md` descreve o uso local.
+- Entregue preparação assíncrona da fila USSD: `UssdCommandStore`,
+  `InMemoryUssdCommandStore`, `UssdCommandQueue`, handlers HTTP do Tasker e testes passaram
+  a usar chamadas `async/await`, permitindo que o próximo adaptador use Redis/BullMQ sem
+  bloquear no contrato síncrono antigo.
 ### ⏳ FASE 8 — Multi-tenancy, billing, painel admin (não iniciada)
   - Inclui: decisão final sobre 1 instância WhatsApp por tenant vs. pool partilhado
     (ver PROJECT_CONTEXT.md secção 2).

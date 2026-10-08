@@ -37,7 +37,7 @@ export class UssdCommandQueue {
     this.#maxAttempts = Number.isInteger(maxAttempts) && maxAttempts > 0 ? maxAttempts : DEFAULT_MAX_ATTEMPTS;
   }
 
-  enqueue({ transactionId, contextKey, destinationNumber, amount = null, paymentAmount = null, deliveryAmount = null }) {
+  async enqueue({ transactionId, contextKey, destinationNumber, amount = null, paymentAmount = null, deliveryAmount = null }) {
     const command = new UssdCommand({
       id: randomUUID(),
       transactionId,
@@ -47,7 +47,7 @@ export class UssdCommandQueue {
       paymentAmount,
       deliveryAmount,
     });
-    this.#store.save(command);
+    await this.#store.save(command);
     this.#logger?.info(
       { commandId: command.id, transactionId, destinationNumber },
       '[UssdCommandQueue] comando USSD colocado na fila'
@@ -56,13 +56,13 @@ export class UssdCommandQueue {
   }
 
   /** Chamado pelo endpoint que o Tasker usa para pedir o próximo trabalho. */
-  dequeueNext() {
-    for (const command of this.#store.list()) {
+  async dequeueNext() {
+    for (const command of await this.#store.list()) {
       if (command.status === UssdCommandStatus.PENDING) {
         command.status = UssdCommandStatus.DISPATCHED;
         command.attemptCount += 1;
         command.dispatchedAt = new Date().toISOString();
-        this.#store.save(command);
+        await this.#store.save(command);
         this.#eventBus?.emit(UssdEvents.DISPATCHED, { command });
         return command;
       }
@@ -71,20 +71,20 @@ export class UssdCommandQueue {
   }
 
   /** Chamado pelo endpoint de confirmação (sucesso ou falha da execução). */
-  ack(commandId, { success, details = null }) {
-    const command = this.#store.get(commandId);
+  async ack(commandId, { success, details = null }) {
+    const command = await this.#store.get(commandId);
     if (!command) return null;
 
     command.status = success ? UssdCommandStatus.COMPLETED : UssdCommandStatus.FAILED;
-    this.#store.delete(commandId);
+    await this.#store.delete(commandId);
 
     const eventName = success ? UssdEvents.COMPLETED : UssdEvents.FAILED;
     this.#eventBus?.emit(eventName, { command, details });
     return command;
   }
 
-  ackMatchingTransfer({ transaction, details = 'SMS Transferiste confirmou execucao USSD' }) {
-    for (const command of this.#store.list()) {
+  async ackMatchingTransfer({ transaction, details = 'SMS Transferiste confirmou execucao USSD' }) {
+    for (const command of await this.#store.list()) {
       if (command.status !== UssdCommandStatus.DISPATCHED) continue;
       if (Number(command.paymentAmount) !== Number(transaction.amount) && Number(command.deliveryAmount) !== Number(transaction.amount)) continue;
       if (!samePhone(command.destinationNumber, transaction.counterpartyPhone)) continue;
@@ -95,10 +95,10 @@ export class UssdCommandQueue {
     return null;
   }
 
-  checkTimedOut(now = Date.now()) {
+  async checkTimedOut(now = Date.now()) {
     const affected = [];
 
-    for (const command of this.#store.list()) {
+    for (const command of await this.#store.list()) {
       if (command.status !== UssdCommandStatus.DISPATCHED) continue;
 
       const dispatchedAt = Date.parse(command.dispatchedAt);
@@ -110,7 +110,7 @@ export class UssdCommandQueue {
       if (command.attemptCount < this.#maxAttempts) {
         command.status = UssdCommandStatus.PENDING;
         command.dispatchedAt = null;
-        this.#store.save(command);
+        await this.#store.save(command);
         this.#logger?.warn(
           {
             commandId: command.id,
@@ -124,7 +124,7 @@ export class UssdCommandQueue {
       }
 
       command.status = UssdCommandStatus.TIMED_OUT;
-      this.#store.delete(command.id);
+      await this.#store.delete(command.id);
       this.#logger?.error(
         {
           commandId: command.id,

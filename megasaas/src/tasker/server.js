@@ -46,14 +46,14 @@ export function createTaskerServer({
     res.status(httpStatus).json(body);
   });
 
-  app.get('/api/v1/tasker/commands/next', (req, res) => {
-    const { httpStatus, body } = handleNextCommand({ ussdCommandQueue });
+  app.get('/api/v1/tasker/commands/next', async (req, res) => {
+    const { httpStatus, body } = await handleNextCommand({ ussdCommandQueue });
     if (httpStatus === 204) return res.status(204).end();
     res.status(httpStatus).json(body);
   });
 
-  const handleAckRequest = (req, res) => {
-    const { httpStatus, body } = handleCommandAck({
+  const handleAckRequest = async (req, res) => {
+    const { httpStatus, body } = await handleCommandAck({
       commandId: req.params.commandId,
       body: req.body,
       query: req.query,

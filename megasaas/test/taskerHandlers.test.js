@@ -148,30 +148,30 @@ test('handleSmsReport rejeita transactionId já usado (idempotência ponta-a-pon
   assert.equal(secondClaimResult.reason, 'ALREADY_USED');
 });
 
-test('handleNextCommand devolve 204 quando não há comandos', () => {
+test('handleNextCommand devolve 204 quando não há comandos', async () => {
   const queue = new UssdCommandQueue({});
-  const result = handleNextCommand({ ussdCommandQueue: queue });
+  const result = await handleNextCommand({ ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 204);
 });
 
-test('handleNextCommand devolve o comando pendente', () => {
+test('handleNextCommand devolve o comando pendente', async () => {
   const queue = new UssdCommandQueue({});
-  queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
-  const result = handleNextCommand({ ussdCommandQueue: queue });
+  await queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
+  const result = await handleNextCommand({ ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 200);
   assert.equal(result.body.destinationNumber, '859253929');
 });
 
-test('handleNextCommand devolve amount como megas a digitar no USSD', () => {
+test('handleNextCommand devolve amount como megas a digitar no USSD', async () => {
   const queue = new UssdCommandQueue({});
-  queue.enqueue({
+  await queue.enqueue({
     transactionId: 'TX1',
     contextKey: 'chat1',
     destinationNumber: '859253929',
     paymentAmount: 15,
     deliveryAmount: 600,
   });
-  const result = handleNextCommand({ ussdCommandQueue: queue });
+  const result = await handleNextCommand({ ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 200);
   assert.equal(result.body.paymentAmount, 15);
   assert.equal(result.body.deliveryAmount, 600);
@@ -179,43 +179,43 @@ test('handleNextCommand devolve amount como megas a digitar no USSD', () => {
   assert.equal(result.body.attemptCount, 1);
 });
 
-test('handleCommandAck marca sucesso corretamente', () => {
+test('handleCommandAck marca sucesso corretamente', async () => {
   const queue = new UssdCommandQueue({});
-  const command = queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
-  const result = handleCommandAck({ commandId: command.id, body: { success: true }, ussdCommandQueue: queue });
+  const command = await queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
+  const result = await handleCommandAck({ commandId: command.id, body: { success: true }, ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 200);
 });
 
-test('handleCommandAck aceita success por query param', () => {
+test('handleCommandAck aceita success por query param', async () => {
   const queue = new UssdCommandQueue({});
-  const command = queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
-  const result = handleCommandAck({ commandId: command.id, query: { success: 'true' }, ussdCommandQueue: queue });
+  const command = await queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
+  const result = await handleCommandAck({ commandId: command.id, query: { success: 'true' }, ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 200);
 });
 
-test('handleCommandAck rejeita ACK sem success explicito', () => {
+test('handleCommandAck rejeita ACK sem success explicito', async () => {
   const queue = new UssdCommandQueue({});
-  const command = queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
-  const result = handleCommandAck({ commandId: command.id, body: {}, ussdCommandQueue: queue });
+  const command = await queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '859253929', amount: 15 });
+  const result = await handleCommandAck({ commandId: command.id, body: {}, ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 400);
 });
 
-test('handleCommandAck devolve 404 para commandId inexistente', () => {
+test('handleCommandAck devolve 404 para commandId inexistente', async () => {
   const queue = new UssdCommandQueue({});
-  const result = handleCommandAck({ commandId: 'nao-existe', body: { success: true }, ussdCommandQueue: queue });
+  const result = await handleCommandAck({ commandId: 'nao-existe', body: { success: true }, ussdCommandQueue: queue });
   assert.equal(result.httpStatus, 404);
 });
 
 test('handleSmsReport usa SMS Transferiste para confirmar comando USSD despachado', async () => {
   const eventBus = new EventBus({ logger: silentLogger });
   const queue = new UssdCommandQueue({ eventBus, logger: silentLogger });
-  const command = queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '850108639', amount: 100 });
+  const command = await queue.enqueue({ transactionId: 'TX1', contextKey: 'chat1', destinationNumber: '850108639', amount: 100 });
   let completedCommand = null;
   eventBus.on(UssdEvents.COMPLETED, ({ command: completed }) => {
     completedCommand = completed;
   });
 
-  queue.dequeueNext();
+  await queue.dequeueNext();
   const result = await handleSmsReport({
     body: { rawSms: TRANSFER_SENT_SMS, timestamp: new Date().toISOString() },
     tenantContext,

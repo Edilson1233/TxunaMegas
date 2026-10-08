@@ -50,7 +50,7 @@ export async function handleSmsReport({
   });
 
   if (parsed.type === TransactionType.TRANSFER_SENT) {
-    const command = ussdCommandQueue?.ackMatchingTransfer({ transaction: realTransaction });
+    const command = await ussdCommandQueue?.ackMatchingTransfer({ transaction: realTransaction });
     if (command) {
       return { httpStatus: 200, body: { status: 'ACCEPTED', note: 'USSD_COMMAND_CONFIRMED' } };
     }
@@ -76,8 +76,8 @@ export async function handleSmsReport({
   return { httpStatus: 409, body: { status: 'REJECTED', reason: verification.reason } };
 }
 
-export function handleNextCommand({ ussdCommandQueue }) {
-  const command = ussdCommandQueue.dequeueNext();
+export async function handleNextCommand({ ussdCommandQueue }) {
+  const command = await ussdCommandQueue.dequeueNext();
   if (!command) {
     return { httpStatus: 204, body: null };
   }
@@ -95,14 +95,14 @@ export function handleNextCommand({ ussdCommandQueue }) {
   };
 }
 
-export function handleCommandAck({ commandId, body, query = {}, ussdCommandQueue }) {
+export async function handleCommandAck({ commandId, body, query = {}, ussdCommandQueue }) {
   const success = parseBoolean(body?.success ?? query?.success);
   const details = body?.details ?? query?.details ?? null;
   if (typeof success !== 'boolean') {
     return { httpStatus: 400, body: { status: 'REJECTED', reason: 'INVALID_PAYLOAD' } };
   }
 
-  const command = ussdCommandQueue.ack(commandId, { success, details });
+  const command = await ussdCommandQueue.ack(commandId, { success, details });
   if (!command) {
     return { httpStatus: 404, body: { status: 'REJECTED', reason: 'COMMAND_NOT_FOUND' } };
   }
