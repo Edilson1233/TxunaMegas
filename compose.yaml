@@ -1,0 +1,37 @@
+name: megasaas-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: megasaas-postgres
+    environment:
+      POSTGRES_DB: megasaas
+      POSTGRES_USER: megasaas
+      POSTGRES_PASSWORD: megasaas
+    ports:
+      - "5432:5432"
+    volumes:
+      - megasaas-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U megasaas -d megasaas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: megasaas-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - megasaas-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  megasaas-postgres-data:
+  megasaas-redis-data:

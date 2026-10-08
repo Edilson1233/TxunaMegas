@@ -23,6 +23,7 @@
 - Node testar: `npm.cmd test` no Windows, ou `npm test`.
 - Core testar: `cd megasaas/core` e `.\mvnw.cmd test` no Windows, ou `./mvnw test`.
 - Core executar: `.\mvnw.cmd spring-boot:run` no Windows, ou `./mvnw spring-boot:run`.
+- Infra local: na raiz, `docker compose up -d` para PostgreSQL e Redis.
 
 ## Convencoes
 - Codigo e a fonte principal da verdade; docs antigas podem estar desatualizadas.

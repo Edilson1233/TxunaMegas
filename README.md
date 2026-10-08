@@ -11,7 +11,7 @@ Sistema SaaS para venda automatizada de pacotes de internet, com fluxo via Whats
 
 - Node.js 18+
 - Java 21
-- PostgreSQL, para executar o Core com persistencia real
+- Docker Desktop, para subir PostgreSQL e Redis localmente
 
 ## Configuracao
 
@@ -20,6 +20,14 @@ cd megasaas
 copy .env.example .env
 npm install
 ```
+
+Infraestrutura local:
+
+```powershell
+docker compose up -d
+```
+
+Ver detalhes em `megasaas/docs/local-infrastructure.md`.
 
 Variaveis importantes no `.env`:
 
