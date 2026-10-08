@@ -1,6 +1,6 @@
 # Mobile Core Flow Test
 
-Objetivo: testar no telemovel que um pagamento de `15.00MT` gera comando USSD com `600`, vindo do Spring Core e nao do `PACKAGE_PRICE_TABLE` do Node.
+Objetivo: testar no telemovel que um pagamento de `15.00MT` gera comando USSD com `100`, vindo do Spring Core e nao do `PACKAGE_PRICE_TABLE` do Node.
 
 ## 1. Preparar PostgreSQL local
 
@@ -45,13 +45,14 @@ CORE_API_BASE_URL=http://localhost:8080
 CORE_INTERNAL_API_TOKEN=test-token
 CORE_TENANT_ID=11111111-1111-1111-1111-111111111111
 TASKER_DEVICE_ID=22222222-2222-2222-2222-222222222222
+TASKER_DEVICE_KEYS=22222222-2222-2222-2222-222222222222:meu_segredo
 WHATSAPP_INSTANCE_ID=default-instance
 TASKER_API_KEY=meu_segredo
 TASKER_PORT=3001
 PACKAGE_PRICE_TABLE=
 ```
 
-`PACKAGE_PRICE_TABLE=` vazio e importante neste teste: se o MacroDroid receber `600`, esse valor veio do Core.
+`PACKAGE_PRICE_TABLE=` vazio e importante neste teste: se o MacroDroid receber `100`, esse valor veio do Core.
 
 Arranca o Node:
 
@@ -86,7 +87,12 @@ Todos os requests MacroDroid devem enviar:
 
 ```text
 Authorization: Bearer meu_segredo
+X-Tasker-Device-Id: 22222222-2222-2222-2222-222222222222
 ```
+
+Se `TASKER_DEVICE_KEYS` nao estiver configurado, o Node aceita o fallback global
+`TASKER_API_KEY`. Para o teste Core completo, usa o header `X-Tasker-Device-Id` para o
+Core conseguir associar a SMS e o comando ao dispositivo seeded.
 
 O `GET /commands/next` deve extrair:
 
@@ -94,7 +100,16 @@ O `GET /commands/next` deve extrair:
 - `destinationNumber` para `lv_numero_destino`.
 - `amount` para `lv_valor_enviar`.
 
-Neste teste, quando o pagamento for `15.00MT`, `lv_valor_enviar` deve ficar `600`.
+Neste teste, quando o pagamento for `15.00MT`, `lv_valor_enviar` deve ficar `100`.
+
+O ACK deve usar o `commandId` recebido:
+
+```text
+POST http://<IP_DO_PC>:3001/api/v1/tasker/commands/{lv=lv_command_id}/ack?success=true
+```
+
+Quando o comando tem `coreCommandId`, o Node envia esse ACK ao Spring Core para atualizar
+`ussd_commands`, `orders`, `payments` e `audit_events`.
 
 ## 6. Executar o teste
 
@@ -107,19 +122,20 @@ Neste teste, quando o pagamento for `15.00MT`, `lv_valor_enviar` deve ficar `600
 ```json
 {
   "paymentAmount": 15,
-  "deliveryAmount": 600,
-  "amount": 600
+  "deliveryAmount": 100,
+  "amount": 100
 }
 ```
 
 Resultado esperado no telemovel:
 
-- O MacroDroid deve digitar `600` no menu USSD, nao `15`.
+- O MacroDroid deve digitar `100` no menu USSD, nao `15`.
 - Depois do ACK ou da SMS `Transferiste`, o Node deve enviar a resposta final no WhatsApp.
+- Com Core ativo, o ACK tambem deve concluir o comando USSD no banco de dados do Core.
 
 ## 7. Se falhar
 
 - Se `GET /commands/next` devolve `204`, ainda nao ha comando ou o pagamento nao foi verificado.
 - Se o Node mostrar erro HTTP do Core, confirma `CORE_INTERNAL_API_TOKEN`, `CORE_API_BASE_URL` e se o Spring esta ligado.
-- Se `deliveryAmount` vier `null`, confirma se o seed foi aplicado e se existe preco ativo `15.00 -> 600MB`.
+- Se `deliveryAmount` vier `null`, confirma se o seed foi aplicado e se existe preco ativo `15.00 -> 100MB`.
 - Se o MacroDroid digitar `15`, confirma que `PACKAGE_PRICE_TABLE` esta vazio e que o Node arrancou depois dessa alteracao.

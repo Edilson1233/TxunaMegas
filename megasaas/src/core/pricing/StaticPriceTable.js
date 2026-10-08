@@ -2,7 +2,7 @@
  * StaticPriceTable
  * ----------------
  * Adaptador temporario para testes locais antes da tabela editavel viver no
- * Spring Core. Formato: "15:600,30:1200" significa 15MT -> 600MB.
+ * Spring Core. Formato: "15:100,30:1200" significa 15MT -> 100MB.
  */
 export class StaticPriceTable {
   #entries;

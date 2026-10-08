@@ -15,7 +15,7 @@ Dados criados:
 - WhatsApp instance: `default-instance`.
 - MacroDroid/Tasker device: `22222222-2222-2222-2222-222222222222`.
 - Produto: `Mobile Data`.
-- Pacote/preco: `15.00 MZN -> 600MB`.
+- Pacote/preco: `15.00 MZN -> 100MB`.
 - Pacote/preco: `30.00 MZN -> 1200MB`.
 
 Variaveis esperadas no Node para usar estes dados:

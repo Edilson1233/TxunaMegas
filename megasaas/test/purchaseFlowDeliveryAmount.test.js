@@ -18,7 +18,7 @@ const PAYMENT_15MT =
   'Confirmado DHQ6LCATV15. Recebeste 15.00MT de 258846227063 - Cliente Teste ' +
   'aos 30/6/26 as 2:18 AM. O teu novo saldo M-Pesa e de 800.00MT. Em caso de duvida, liga 100. 850108639';
 
-test('pagamento de 15MT gera comando USSD com 600MB quando tabela temporaria esta configurada', async () => {
+test('pagamento de 15MT gera comando USSD com 100MB quando tabela temporaria esta configurada', async () => {
   const eventBus = new EventBus({ logger: silentLogger });
   const sessionManager = new SessionManager({ store: new InMemorySessionStore() });
   const pendingTransactionManager = new PendingTransactionManager({
@@ -28,7 +28,7 @@ test('pagamento de 15MT gera comando USSD com 600MB quando tabela temporaria est
   });
   const ussdCommandQueue = new UssdCommandQueue({ eventBus, logger: silentLogger });
   const tenantContext = TenantContext.resolveForInstance('default-instance');
-  const priceTable = StaticPriceTable.fromEnv('15:600');
+  const priceTable = StaticPriceTable.fromEnv('15:100');
 
   const coordinator = new PurchaseFlowCoordinator({
     eventBus,
@@ -54,6 +54,6 @@ test('pagamento de 15MT gera comando USSD com 600MB quando tabela temporaria est
 
   const command = await ussdCommandQueue.dequeueNext();
   assert.equal(command.paymentAmount, 15);
-  assert.equal(command.deliveryAmount, 600);
-  assert.equal(command.amount, 600);
+  assert.equal(command.deliveryAmount, 100);
+  assert.equal(command.amount, 100);
 });
