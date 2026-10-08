@@ -304,7 +304,7 @@ Total final: **75 testes**.
   testar Core + PostgreSQL + Node + MacroDroid com tenant/dispositivo/pacotes reais.
 - Documentação e contrato atualizados: `ARCHITECTURE.md`, `docs/local-core-seed.md`,
   `docs/mobile-core-flow-test.md` e `contracts/core-api.openapi.yaml`.
-- Validação local mais recente: `npm.cmd test` com 99 testes Node a passar e
+- Validação local mais recente: `npm.cmd test` com 104 testes Node a passar e
   `.\mvnw.cmd test` com 20 testes Core a passar.
 ### 🚧 FASE 7 — Redis e BullMQ (preparação iniciada)
 - Entregue primeiro incremento preparatório no Node: `UssdCommandQueue` deixou de guardar
@@ -318,6 +318,12 @@ Total final: **75 testes**.
   `InMemoryUssdCommandStore`, `UssdCommandQueue`, handlers HTTP do Tasker e testes passaram
   a usar chamadas `async/await`, permitindo que o próximo adaptador use Redis/BullMQ sem
   bloquear no contrato síncrono antigo.
+- Entregue adapter opcional `BullMqUssdCommandStore`, selecionado por
+  `USSD_COMMAND_STORE=bullmq`, usando `REDIS_URL` e mantendo o modo em memória como padrão
+  para testes locais sem Redis.
+- Entregue adapter opcional `RedisPendingTransactionStore`, selecionado por
+  `PENDING_TRANSACTION_STORE=redis`, para persistir pending claims, SMS orfas e
+  transactionIds usados no modo local sem Core.
 ### ⏳ FASE 8 — Multi-tenancy, billing, painel admin (não iniciada)
   - Inclui: decisão final sobre 1 instância WhatsApp por tenant vs. pool partilhado
     (ver PROJECT_CONTEXT.md secção 2).

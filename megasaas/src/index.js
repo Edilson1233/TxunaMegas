@@ -7,8 +7,9 @@ import { TenantContext } from './core/dto/TenantContext.js';
 import { SessionManager } from './core/session/SessionManager.js';
 import { InMemorySessionStore } from './core/session/InMemorySessionStore.js';
 import { PendingTransactionManager } from './core/transactions/PendingTransactionManager.js';
-import { InMemoryPendingTransactionStore } from './core/transactions/InMemoryPendingTransactionStore.js';
+import { createPendingTransactionStore } from './core/transactions/createPendingTransactionStore.js';
 import { UssdCommandQueue } from './tasker/UssdCommandQueue.js';
+import { createUssdCommandStore } from './tasker/createUssdCommandStore.js';
 import { createTaskerServer } from './tasker/server.js';
 import { PurchaseFlowCoordinator } from './flow/PurchaseFlowCoordinator.js';
 import { CorePaymentClient } from './core/api/CorePaymentClient.js';
@@ -46,13 +47,16 @@ async function main() {
   }
 
   const sessionManager = new SessionManager({ store: new InMemorySessionStore() });
+  const pendingTransactionStore = createPendingTransactionStore({ logger });
   const pendingTransactionManager = new PendingTransactionManager({
-    store: new InMemoryPendingTransactionStore(),
+    store: pendingTransactionStore,
     eventBus,
     logger,
     corePaymentClient,
   });
+  const ussdCommandStore = createUssdCommandStore({ logger });
   const ussdCommandQueue = new UssdCommandQueue({
+    store: ussdCommandStore,
     eventBus,
     logger,
     dispatchTimeoutMs: Number(process.env.USSD_COMMAND_TIMEOUT_MS ?? DEFAULT_USSD_COMMAND_TIMEOUT_MS),
@@ -123,6 +127,8 @@ async function main() {
     clearInterval(expiryInterval);
     clearInterval(ussdCommandTimeoutInterval);
     httpServer.close();
+    await pendingTransactionManager.close();
+    await ussdCommandQueue.close();
     await provider.disconnect();
     process.exit(0);
   };

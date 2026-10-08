@@ -138,6 +138,10 @@ export class UssdCommandQueue {
 
     return affected;
   }
+
+  async close() {
+    await this.#store.close?.();
+  }
 }
 
 function samePhone(left, right) {

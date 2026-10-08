@@ -60,6 +60,24 @@ WHATSAPP_INSTANCE_ID=default-instance
 REDIS_URL=redis://localhost:6379
 ```
 
+Para usar a fila USSD persistente no Node:
+
+```env
+USSD_COMMAND_STORE=bullmq
+REDIS_URL=redis://localhost:6379
+```
+
+Sem `USSD_COMMAND_STORE=bullmq`, o Node continua a usar a fila em memoria.
+
+Para persistir pending transactions, SMS orfas e transactionIds ja usados no Redis:
+
+```env
+PENDING_TRANSACTION_STORE=redis
+REDIS_URL=redis://localhost:6379
+```
+
+Sem `PENDING_TRANSACTION_STORE=redis`, o Node continua a usar pending transactions em memoria.
+
 ## Seed Local
 
 Depois de subir o PostgreSQL e antes do teste completo com Node + Core:

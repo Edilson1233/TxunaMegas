@@ -22,4 +22,8 @@ export class UssdCommandStore {
   async list() {
     throw new Error('[UssdCommandStore] list() nao implementado');
   }
+
+  async close() {
+    // Implementacoes sem conexao externa nao precisam fazer nada.
+  }
 }

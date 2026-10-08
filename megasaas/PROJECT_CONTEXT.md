@@ -204,10 +204,10 @@ O utilizador partilhou capturas de ecrã de um bot concorrente já em produção
 Ver `ROADMAP.md` neste mesmo pacote — é o ficheiro que se atualiza a cada fase concluída.
 
 Resumo operacional atual:
-- Fase 6 está em curso.
+- Fase 7 está em curso.
 - Node já consegue delegar claims/confirmations ao Core via REST quando `CORE_API_BASE_URL`
   está configurado.
 - Core já guarda pagamentos/pedidos e resolve `deliveryAmount` a partir de produtos,
   pacotes e preços do tenant.
 - API interna de catálogo já existe para produtos, pacotes e preços.
-- Testes mais recentes registados: 99 testes Node e 20 testes Core a passar.
+- Testes mais recentes registados: 104 testes Node e 20 testes Core a passar.

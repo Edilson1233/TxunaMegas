@@ -8,7 +8,7 @@ Este documento descreve o estado real observado no código e a direção arquite
 
 ## Estado Atual
 
-O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp e confirmacoes SMS ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo em memoria para testes locais com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core e ha um `compose.yaml` local para PostgreSQL + Redis. Redis/BullMQ ainda nao foi implementado; a fila USSD ja foi isolada por `UssdCommandStore` assincrono para permitir essa troca.
+O projeto implementado hoje tem dois modulos: o gateway Node.js existente e o Spring Boot Core em `core/`. O fluxo funcional continua a arrancar pelo Node.js, mas o Node ja pode delegar claims WhatsApp e confirmacoes SMS ao Core por REST autenticado quando `CORE_API_BASE_URL` esta configurado. Sem essa configuracao, o Node mantem o fluxo antigo local para testes com WhatsApp/MacroDroid. PostgreSQL ja esta modelado via Flyway no core e ha um `compose.yaml` local para PostgreSQL + Redis. A fila USSD ja usa o contrato assincrono `UssdCommandStore` e pode usar BullMQ/Redis de forma opcional via `USSD_COMMAND_STORE=bullmq`; pending transactions, SMS orfas e idempotencia local tambem podem usar Redis via `PENDING_TRANSACTION_STORE=redis`.
 
 Fluxo real atual:
 
@@ -64,6 +64,8 @@ src/core/
   events/EventBus.js
   session/*
   transactions/*
+    RedisPendingTransactionStore.js
+    createPendingTransactionStore.js
 
 src/tasker/
   server.js
@@ -72,6 +74,10 @@ src/tasker/
   RateLimiter.js
   UssdCommand.js
   UssdCommandQueue.js
+  UssdCommandStore.js
+  InMemoryUssdCommandStore.js
+  BullMqUssdCommandStore.js
+  createUssdCommandStore.js
   UssdEvents.js
 
 src/flow/
@@ -98,9 +104,9 @@ Existe também `src/core/ussd/`, atualmente vazio.
 - Receção de SMS real via Tasker/MacroDroid em `POST /api/v1/tasker/sms`.
 - Autenticação Tasker por Bearer token global.
 - Rate limiting em memória por header de autorização.
-- Pending transactions em memória, com suporte a WhatsApp primeiro ou SMS primeiro.
-- Idempotência em memória por `externalTransactionId` usado.
-- Fila USSD em memória, polling por `GET /api/v1/tasker/commands/next` e ACK por `POST /api/v1/tasker/commands/:commandId/ack`.
+- Pending transactions com suporte a WhatsApp primeiro ou SMS primeiro; por defeito usam memoria, mas podem usar Redis com `PENDING_TRANSACTION_STORE=redis`.
+- Idempotência local por `externalTransactionId` usado; por defeito em memoria, mas persistente em Redis quando o adapter esta ativo.
+- Fila USSD com contrato assincrono, polling por `GET /api/v1/tasker/commands/next` e ACK por `POST /api/v1/tasker/commands/:commandId/ack`; por defeito usa memoria, mas pode usar BullMQ/Redis com `USSD_COMMAND_STORE=bullmq`.
 - Integração opcional Node -> Spring Core para claims de pagamento e confirmações SMS, com idempotência persistida no Core.
 - Spring Core com autenticação interna Bearer token para `/internal/**`.
 - Spring Core com tenant context por instância WhatsApp.
@@ -110,10 +116,10 @@ Existe também `src/core/ussd/`, atualmente vazio.
 
 ## Limites E Dívida Técnica
 
-- Não há persistência durável; reiniciar o processo perde sessões, pending claims, órfãs, idempotência, rate limit e fila USSD.
+- Ainda não há persistência durável para sessões e rate limit; pending claims, órfãs, idempotência local e fila USSD podem ser persistidas via Redis/BullMQ quando configuradas.
 - Spring Boot já tem os primeiros contratos de System of Record para pagamentos e catálogo, mas ainda não cobre todo o domínio SaaS.
-- Há modelo relacional via Flyway, mas ainda não há PostgreSQL local provisionado neste repositório.
-- Ainda não há BullMQ, retries persistentes, dead-letter queue, locks distribuídos ou timeouts robustos para comandos `DISPATCHED`. Redis já está provisionado localmente via Compose, mas ainda não é usado em runtime.
+- Há modelo relacional via Flyway e infraestrutura local via Compose para PostgreSQL e Redis.
+- Redis já existe como adapter opcional de pending transactions e BullMQ/Redis como adapter opcional da fila USSD, mas ainda não há retries persistentes, dead-letter queue, locks distribuídos ou timeouts robustos para comandos `DISPATCHED`.
 - Multi-tenant existe no schema e no tenant context do Core, mas ainda não há RBAC completo nem dashboard/admin.
 - Produtos, pacotes e preços já existem no Core por API interna; ainda falta UI/admin real para o revendedor editar sem chamada técnica.
 - Ainda não há utilizadores funcionais, RBAC, clientes completos, subscrições, billing ou auditoria operacional consumida por tela.
@@ -127,11 +133,11 @@ Existe também `src/core/ussd/`, atualmente vazio.
 - O token Tasker é global e partilhado; em produção deve ser por dispositivo/tenant.
 - A comparação de token é simples e não constant-time.
 - Anti-replay usa timestamp, mas não há assinatura HMAC, nonce persistido ou request id.
-- Idempotência em memória não protege contra replay após restart.
+- Idempotência local em memória não protege contra replay após restart; usar `PENDING_TRANSACTION_STORE=redis` reduz esse risco no modo sem Core.
 - Rate limit em memória não funciona em escala horizontal.
 - Pagamentos e USSD ainda não têm auditoria persistente.
 - A confirmação de pagamento deve restringir o fluxo de venda a transações recebidas (`RECEIVED`) quando o core for formalizado.
-- Comandos USSD precisam de timeout, retry, deduplicação e política de falha operacional antes de produção.
+- Comandos USSD ainda precisam de retries persistentes, deduplicação distribuída e política de falha operacional antes de produção.
 
 ## Arquitetura-Alvo
 
@@ -184,7 +190,7 @@ Comunicação inicial Node ↔ Spring Boot: REST API autenticada. Arquitetura or
 2. Criar Spring Boot mínimo com PostgreSQL, migrations e entidades: tenant, device, customer, order, payment, ussd_command/audit_event.
 3. Migrar idempotência para PostgreSQL com chave única por `tenantId + provider + externalTransactionId`.
 4. Manter WhatsApp, Tasker e parser no Node, mas delegar decisões persistentes ao Spring.
-5. Introduzir adaptador Redis/BullMQ no Node para fila USSD com retry, timeout, backoff e dead-letter.
+5. Evoluir o adapter Redis/BullMQ da fila USSD com retry, timeout, backoff e dead-letter.
 6. Substituir stores em memória por adaptadores reais, mantendo interfaces onde fizer sentido.
 7. Implementar credenciais por dispositivo/tenant e rate limiting distribuído.
 8. Adicionar catálogo de pacotes, preços, comandos WhatsApp, e-Mola, dashboard/admin e billing.
@@ -206,7 +212,7 @@ Testes executados no diagnóstico:
 npm.cmd test
 ```
 
-Resultado Node observado: 99 testes passaram, 0 falharam.
+Resultado Node observado: 104 testes passaram, 0 falharam.
 
 ```powershell
 cd core

@@ -57,4 +57,8 @@ export class PendingTransactionStore {
   async listOrphanReal() {
     throw new Error('listOrphanReal() não implementado');
   }
+
+  async close() {
+    // Implementacoes sem conexao externa nao precisam fazer nada.
+  }
 }

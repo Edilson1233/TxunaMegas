@@ -238,6 +238,10 @@ export class PendingTransactionManager {
     return expired;
   }
 
+  async close() {
+    await this.#store.close?.();
+  }
+
   async #registerClaimInCore(transaction, options) {
     const decision = await this.#corePaymentClient.registerPaymentClaim({
       transaction,
