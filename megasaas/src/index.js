@@ -10,6 +10,8 @@ import { PendingTransactionManager } from './core/transactions/PendingTransactio
 import { createPendingTransactionStore } from './core/transactions/createPendingTransactionStore.js';
 import { UssdCommandQueue } from './tasker/UssdCommandQueue.js';
 import { createUssdCommandStore } from './tasker/createUssdCommandStore.js';
+import { UssdEvents } from './tasker/UssdEvents.js';
+import { parseTaskerDeviceTokens } from './tasker/taskerAuth.js';
 import { createTaskerServer } from './tasker/server.js';
 import { PurchaseFlowCoordinator } from './flow/PurchaseFlowCoordinator.js';
 import { CorePaymentClient } from './core/api/CorePaymentClient.js';
@@ -79,8 +81,11 @@ async function main() {
     logger,
     whatsAppProvider: provider,
     priceTable,
+    corePaymentClient,
+    taskerDeviceId: process.env.TASKER_DEVICE_ID ?? null,
   });
   coordinator.start();
+  registerCoreUssdAuditHandlers({ eventBus, corePaymentClient, logger });
 
   const expiryInterval = setInterval(() => {
     pendingTransactionManager.checkExpired().catch((err) => logger.error({ err }, '[main] falha ao verificar expirações'));
@@ -94,8 +99,13 @@ async function main() {
 
   // --- Servidor HTTP para o Tasker (Fase 5) ---
   const taskerApiKey = process.env.TASKER_API_KEY;
+  const taskerDeviceId = process.env.TASKER_DEVICE_ID ?? null;
+  const taskerDeviceTokens = parseTaskerDeviceTokens(process.env.TASKER_DEVICE_KEYS);
   if (!taskerApiKey) {
     logger.warn('[main] TASKER_API_KEY não definido — o servidor Tasker vai rejeitar TODOS os pedidos até isto ser configurado no .env');
+  }
+  if (taskerDeviceTokens.size > 0) {
+    logger.info({ deviceCount: taskerDeviceTokens.size }, '[main] autenticação Tasker por token de dispositivo ativa');
   }
   const taskerServer = createTaskerServer({
     tenantContext,
@@ -103,7 +113,8 @@ async function main() {
     ussdCommandQueue,
     logger,
     apiKey: taskerApiKey,
-    deviceId: process.env.TASKER_DEVICE_ID,
+    deviceId: taskerDeviceId,
+    deviceTokens: taskerDeviceTokens,
   });
   const taskerPort = Number(process.env.TASKER_PORT ?? 3001);
   const httpServer = taskerServer.listen(taskerPort, () => {
@@ -140,3 +151,32 @@ main().catch((err) => {
   logger.error({ err }, '[main] falha fatal ao iniciar');
   process.exit(1);
 });
+
+function registerCoreUssdAuditHandlers({ eventBus, corePaymentClient, logger }) {
+  if (!corePaymentClient) return;
+
+  eventBus.on(UssdEvents.COMPLETED, async ({ command, details }) => {
+    await ackCoreUssdCommand({ corePaymentClient, logger, command, success: true, details });
+  });
+
+  eventBus.on(UssdEvents.FAILED, async ({ command, details }) => {
+    await ackCoreUssdCommand({ corePaymentClient, logger, command, success: false, details });
+  });
+}
+
+async function ackCoreUssdCommand({ corePaymentClient, logger, command, success, details }) {
+  if (!command.coreCommandId) {
+    logger.debug({ commandId: command.id }, '[main] comando USSD sem coreCommandId; ACK Core ignorado');
+    return;
+  }
+
+  try {
+    await corePaymentClient.ackUssdCommand({
+      commandId: command.coreCommandId,
+      success,
+      details,
+    });
+  } catch (err) {
+    logger.error({ err, commandId: command.id, coreCommandId: command.coreCommandId }, '[main] falha ao auditar ACK USSD no Core');
+  }
+}

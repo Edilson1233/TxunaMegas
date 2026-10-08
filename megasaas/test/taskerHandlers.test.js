@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleSmsReport, handleNextCommand, handleCommandAck } from '../src/tasker/taskerHandlers.js';
+import { handleSmsReport, handleNextCommand, handleCommandAck, normalizeTaskerTimestamp } from '../src/tasker/taskerHandlers.js';
 import { TenantContext } from '../src/core/dto/TenantContext.js';
 import { PendingTransactionManager } from '../src/core/transactions/PendingTransactionManager.js';
 import { InMemoryPendingTransactionStore } from '../src/core/transactions/InMemoryPendingTransactionStore.js';
 import { EventBus } from '../src/core/events/EventBus.js';
 import { UssdCommandQueue } from '../src/tasker/UssdCommandQueue.js';
 import { UssdEvents } from '../src/tasker/UssdEvents.js';
+import { createTaskerServer } from '../src/tasker/server.js';
 import { Transaction, TransactionSource } from '../src/core/dto/Transaction.js';
 import { PaymentProvider } from '../src/core/dto/PaymentProvider.js';
 import { TransactionType } from '../src/core/dto/TransactionType.js';
@@ -226,4 +227,73 @@ test('handleSmsReport usa SMS Transferiste para confirmar comando USSD despachad
   assert.equal(result.httpStatus, 200);
   assert.equal(result.body.note, 'USSD_COMMAND_CONFIRMED');
   assert.equal(completedCommand.id, command.id);
+});
+
+test('normalizeTaskerTimestamp converte timestamp local do MacroDroid para ISO com offset', () => {
+  assert.equal(normalizeTaskerTimestamp('2026-10-08 17:58:21'), '2026-10-08T17:58:21+02:00');
+});
+
+test('normalizeTaskerTimestamp preserva timestamps ISO validos', () => {
+  assert.equal(normalizeTaskerTimestamp('2026-09-04T00:00:00.000Z'), '2026-09-04T00:00:00.000Z');
+});
+
+test('handleSmsReport envia timestamp normalizado ao Core', async () => {
+  let capturedOptions = null;
+  const macroDroidTimestamp = new Date(Date.now() + 2 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+
+  const result = await handleSmsReport({
+    body: { transactionId: 'DFT1KNIBSBZ', amount: 210, rawSms: REAL_SMS, timestamp: macroDroidTimestamp },
+    tenantContext,
+    pendingTransactionManager: {
+      async resolveWithRealTransaction(_transaction, options) {
+        capturedOptions = options;
+        return null;
+      },
+    },
+  });
+
+  assert.equal(result.httpStatus, 202);
+  assert.match(capturedOptions.reportedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+02:00$/);
+});
+
+test('TaskerServer devolve 502 em erro interno sem derrubar o processo Node', async () => {
+  const app = createTaskerServer({
+    tenantContext,
+    pendingTransactionManager: {
+      async resolveWithRealTransaction() {
+        throw new Error('Core indisponivel');
+      },
+    },
+    ussdCommandQueue: null,
+    logger: silentLogger,
+    apiKey: 'secret',
+  });
+  const server = await new Promise((resolve) => {
+    const started = app.listen(0, () => resolve(started));
+  });
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/tasker/sms`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transactionId: 'DFT1KNIBSBZ',
+        amount: 210,
+        rawSms: REAL_SMS,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).reason, 'UPSTREAM_ERROR');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

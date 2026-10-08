@@ -23,11 +23,18 @@ const REAL_SMS =
   'Confirmado DFT1KNIBSBZ. Recebeste 210.00MT de 258846227063 - Paulo Marcelino Chivinge ' +
   'aos 29/6/26 as 2:50 PM. O teu novo saldo M-Pesa e de 326.78MT. Em caso de duvida, liga 100. 843112233';
 
-function setup({ claimTimeoutMs, orphanTimeoutMs } = {}) {
+function setup({
+  claimTimeoutMs,
+  orphanTimeoutMs,
+  corePaymentClient = null,
+  taskerDeviceId = null,
+  whatsAppProvider = null,
+} = {}) {
   const eventBus = new EventBus({ logger: silentLogger });
   const sessionManager = new SessionManager({ store: new InMemorySessionStore() });
+  const pendingTransactionStore = new InMemoryPendingTransactionStore();
   const pendingTransactionManager = new PendingTransactionManager({
-    store: new InMemoryPendingTransactionStore(),
+    store: pendingTransactionStore,
     eventBus,
     logger: silentLogger,
     claimTimeoutMs,
@@ -43,10 +50,13 @@ function setup({ claimTimeoutMs, orphanTimeoutMs } = {}) {
     ussdCommandQueue,
     tenantContext,
     logger: silentLogger,
+    whatsAppProvider,
+    corePaymentClient,
+    taskerDeviceId,
   });
   coordinator.start();
 
-  return { eventBus, sessionManager, pendingTransactionManager, ussdCommandQueue, tenantContext };
+  return { eventBus, sessionManager, pendingTransactionManager, pendingTransactionStore, ussdCommandQueue, tenantContext };
 }
 
 function buildRealTransaction(tenantContext) {
@@ -74,6 +84,27 @@ test('mensagem irrelevante não altera a sessão', async () => {
 
   const session = await sessionManager.getOrCreate('chat1');
   assert.equal(session.state, SessionState.IDLE);
+});
+
+test('correção real: alegação rejeitada imediatamente a partir de IDLE responde ao cliente', async () => {
+  const sentMessages = [];
+  const fakeWhatsAppProvider = {
+    async sendText(chatId, text) {
+      sentMessages.push({ chatId, text });
+    },
+  };
+  const { eventBus, sessionManager, pendingTransactionStore } = setup({ whatsAppProvider: fakeWhatsAppProvider });
+  await pendingTransactionStore.markUsed('DFT1KNIBSBZ');
+
+  eventBus.emit(WhatsAppEvents.MESSAGE_RECEIVED, { contextKey: 'chat1', text: REAL_SMS });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const session = await sessionManager.getOrCreate('chat1');
+  assert.equal(session.state, SessionState.NOT_FOUND);
+  assert.equal(session.currentTransactionId, 'DFT1KNIBSBZ');
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].chatId, 'chat1');
+  assert.match(sentMessages[0].text, /Comprovativo.*utilizado/i);
 });
 
 test('ciclo completo: alegação -> verificação real positiva -> PROCESSING', async () => {
@@ -134,6 +165,35 @@ test('Fase 5 — ciclo ponta-a-ponta: verificação -> comando USSD -> ack suces
 
   const session = await sessionManager.getOrCreate('chat1');
   assert.equal(session.state, SessionState.COMPLETED);
+});
+
+test('com Core ativo, falha ao registar comando USSD bloqueia entrega local', async () => {
+  const taskerDeviceId = '22222222-2222-2222-2222-222222222222';
+  const corePaymentClient = {
+    async registerUssdCommand() {
+      throw new Error('core indisponivel');
+    },
+  };
+  const { eventBus, sessionManager, pendingTransactionManager, tenantContext, ussdCommandQueue } = setup({
+    corePaymentClient,
+    taskerDeviceId,
+  });
+
+  eventBus.emit(WhatsAppEvents.MESSAGE_RECEIVED, { contextKey: 'chat1', text: REAL_SMS });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const realTransaction = buildRealTransaction(tenantContext);
+  realTransaction.orderId = '33333333-3333-3333-3333-333333333333';
+  realTransaction.paymentId = '44444444-4444-4444-4444-444444444444';
+  realTransaction.deliveryAmount = 600;
+
+  await pendingTransactionManager.resolveWithRealTransaction(realTransaction);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const command = await ussdCommandQueue.dequeueNext();
+  const session = await sessionManager.getOrCreate('chat1');
+  assert.equal(command, null);
+  assert.equal(session.state, SessionState.NOT_FOUND);
 });
 
 test('Fase 5 — ciclo ponta-a-ponta: falha na execução do USSD leva a NOT_FOUND (escalar suporte)', async () => {

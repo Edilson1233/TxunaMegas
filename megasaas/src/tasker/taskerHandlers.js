@@ -3,6 +3,8 @@ import { Transaction, TransactionSource } from '../core/dto/Transaction.js';
 import { TransactionType } from '../core/dto/TransactionType.js';
 
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
+const TASKER_LOCAL_UTC_OFFSET = '+02:00';
+const LOCAL_TIMESTAMP_REGEX = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d{1,9})?$/;
 
 /**
  * Nucleo do endpoint POST /api/v1/tasker/sms.
@@ -24,7 +26,8 @@ export async function handleSmsReport({
     return { httpStatus: 400, body: { status: 'REJECTED', reason: 'INVALID_PAYLOAD' } };
   }
 
-  const reportedAt = Date.parse(timestamp);
+  const normalizedTimestamp = normalizeTaskerTimestamp(timestamp);
+  const reportedAt = normalizedTimestamp ? Date.parse(normalizedTimestamp) : NaN;
   if (Number.isNaN(reportedAt) || Math.abs(Date.now() - reportedAt) > MAX_TIMESTAMP_SKEW_MS) {
     return { httpStatus: 400, body: { status: 'REJECTED', reason: 'STALE_TIMESTAMP' } };
   }
@@ -62,7 +65,7 @@ export async function handleSmsReport({
     parsedPayment: parsed,
     deviceId: body.deviceId ?? deviceId,
     rawSms,
-    reportedAt: timestamp,
+    reportedAt: normalizedTimestamp,
   });
 
   if (!verification) {
@@ -118,6 +121,33 @@ function parseReportedAmount(amount, fallback) {
     if (Number.isFinite(normalized)) return normalized;
   }
   return null;
+}
+
+export function normalizeTaskerTimestamp(timestamp) {
+  if (timestamp instanceof Date) {
+    return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+  }
+
+  if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+    const millis = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  if (typeof timestamp !== 'string') return null;
+
+  const trimmed = timestamp.trim();
+  if (!trimmed) return null;
+
+  const localMatch = LOCAL_TIMESTAMP_REGEX.exec(trimmed);
+  if (localMatch && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) {
+    const [, datePart, timePart, fraction = ''] = localMatch;
+    return `${datePart}T${timePart}${fraction}${TASKER_LOCAL_UTC_OFFSET}`;
+  }
+
+  const parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) return null;
+  return new Date(parsed).toISOString();
 }
 
 function parseBoolean(value) {

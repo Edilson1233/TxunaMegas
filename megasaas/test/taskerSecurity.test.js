@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyTaskerToken } from '../src/tasker/taskerAuth.js';
+import { parseTaskerDeviceTokens, verifyTaskerCredentials, verifyTaskerToken } from '../src/tasker/taskerAuth.js';
 import { RateLimiter } from '../src/tasker/RateLimiter.js';
 
 test('verifyTaskerToken aceita Bearer token correto', () => {
@@ -14,6 +14,29 @@ test('verifyTaskerToken rejeita cabeçalho ausente', () => {
 });
 test('verifyTaskerToken nunca aceita se não houver token configurado no servidor', () => {
   assert.equal(verifyTaskerToken('Bearer qualquer', undefined), false);
+});
+
+test('parseTaskerDeviceTokens carrega tokens por dispositivo', () => {
+  const tokens = parseTaskerDeviceTokens('device-1:token1, device-2: token2');
+  assert.equal(tokens.get('device-1'), 'token1');
+  assert.equal(tokens.get('device-2'), 'token2');
+});
+
+test('verifyTaskerCredentials usa token especifico do dispositivo quando configurado', () => {
+  const deviceTokens = parseTaskerDeviceTokens('device-1:token1,device-2:token2');
+
+  assert.equal(verifyTaskerCredentials({
+    authorizationHeader: 'Bearer token2',
+    expectedToken: 'global',
+    deviceId: 'device-2',
+    deviceTokens,
+  }), true);
+  assert.equal(verifyTaskerCredentials({
+    authorizationHeader: 'Bearer global',
+    expectedToken: 'global',
+    deviceId: 'device-2',
+    deviceTokens,
+  }), false);
 });
 
 test('RateLimiter permite pedidos dentro do limite', () => {

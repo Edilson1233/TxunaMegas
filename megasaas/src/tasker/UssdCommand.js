@@ -16,6 +16,9 @@ export const UssdCommandStatus = Object.freeze({
 export class UssdCommand {
   constructor({
     id,
+    coreCommandId = null,
+    orderId = null,
+    paymentId = null,
     transactionId,
     contextKey,
     destinationNumber = null,
@@ -33,6 +36,9 @@ export class UssdCommand {
     if (!contextKey) throw new TypeError('[UssdCommand] contextKey é obrigatório');
 
     this.id = id;
+    this.coreCommandId = coreCommandId;
+    this.orderId = orderId;
+    this.paymentId = paymentId;
     this.transactionId = transactionId;
     this.contextKey = contextKey;
     this.destinationNumber = destinationNumber;

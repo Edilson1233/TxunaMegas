@@ -40,6 +40,8 @@ export class Transaction {
   constructor({
     id = null,
     tenantId,
+    orderId = null,
+    paymentId = null,
     provider,
     type,
     externalTransactionId = null,
@@ -76,6 +78,8 @@ export class Transaction {
 
     this.id = id;
     this.tenantId = tenantId;
+    this.orderId = orderId;
+    this.paymentId = paymentId;
     this.provider = provider;
     this.type = type;
     this.externalTransactionId = externalTransactionId;

@@ -20,3 +20,31 @@ export function verifyTaskerToken(authorizationHeader, expectedToken) {
 
   return token === expectedToken.trim();
 }
+
+export function parseTaskerDeviceTokens(rawValue) {
+  const tokens = new Map();
+  if (!rawValue || !String(rawValue).trim()) return tokens;
+
+  for (const entry of String(rawValue).split(',')) {
+    const [deviceId, token] = entry.split(':').map((part) => part?.trim());
+    if (deviceId && token) {
+      tokens.set(deviceId, token);
+    }
+  }
+
+  return tokens;
+}
+
+export function verifyTaskerCredentials({
+  authorizationHeader,
+  expectedToken,
+  deviceId = null,
+  deviceTokens = new Map(),
+}) {
+  if (deviceTokens?.size > 0) {
+    const expectedDeviceToken = deviceId ? deviceTokens.get(deviceId) : null;
+    return verifyTaskerToken(authorizationHeader, expectedDeviceToken);
+  }
+
+  return verifyTaskerToken(authorizationHeader, expectedToken);
+}

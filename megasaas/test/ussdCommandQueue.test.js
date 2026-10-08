@@ -94,6 +94,23 @@ test('enqueue separa valor pago e megas a entregar mantendo amount como alias de
   assert.equal(command.amount, 600);
 });
 
+test('enqueue preserva ids do Core para auditoria do comando USSD', async () => {
+  const queue = new UssdCommandQueue({});
+  const command = await queue.enqueue({
+    transactionId: 'TX1',
+    contextKey: 'chat1',
+    destinationNumber: '850108639',
+    amount: 600,
+    orderId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    paymentId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    coreCommandId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+  });
+
+  assert.equal(command.orderId, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  assert.equal(command.paymentId, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  assert.equal(command.coreCommandId, 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+});
+
 test('checkTimedOut marca comando DISPATCHED como TIMED_OUT depois do timeout final', async () => {
   const emitted = [];
   const queue = new UssdCommandQueue({

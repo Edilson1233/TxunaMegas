@@ -84,18 +84,67 @@ export class CorePaymentClient {
     }, idempotencyKey);
   }
 
+  async registerUssdCommand({
+    transaction,
+    deviceId,
+    destinationNumber,
+    amount,
+  }) {
+    if (!transaction.orderId || !transaction.paymentId) {
+      throw new Error('[CorePaymentClient] orderId/paymentId sao obrigatorios para auditar USSD no Core');
+    }
+
+    const idempotencyKey = this.#idempotencyKey('ussd-command-create', [
+      transaction.tenantId,
+      transaction.orderId,
+      transaction.paymentId,
+      transaction.externalTransactionId,
+    ]);
+
+    return this.#post('/internal/v1/ussd-commands', {
+      tenantId: transaction.tenantId,
+      deviceId,
+      orderId: transaction.orderId,
+      paymentId: transaction.paymentId,
+      externalTransactionId: transaction.externalTransactionId,
+      destinationNumber,
+      amount,
+    }, idempotencyKey);
+  }
+
+  async ackUssdCommand({
+    commandId,
+    success,
+    details = null,
+    providerReference = null,
+    rawOutput = null,
+    acknowledgedAt = new Date().toISOString(),
+  }) {
+    return this.#post(`/internal/v1/ussd-commands/${commandId}/ack`, {
+      success,
+      acknowledgedAt,
+      providerReference,
+      details,
+      rawOutput,
+    });
+  }
+
   async #post(path, body, idempotencyKey) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.#timeoutMs);
 
     try {
+      const headers = {
+        Authorization: `Bearer ${this.#token}`,
+        'Content-Type': 'application/json',
+      };
+      if (idempotencyKey) {
+        headers['Idempotency-Key'] = idempotencyKey;
+      }
+
       const response = await fetch(`${this.#baseUrl}${path}`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.#token}`,
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey,
-        },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });

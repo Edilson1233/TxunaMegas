@@ -31,6 +31,14 @@ test('Session rejeita transição inválida (saltar estados)', () => {
   assert.throws(() => session.transitionTo(SessionState.COMPLETED), /transição inválida/);
 });
 
+test('Session permite rejeição imediata a partir de IDLE', () => {
+  const session = new Session({ contextKey: 'chat1' });
+  session.transitionTo(SessionState.NOT_FOUND, { currentTransactionId: 'TX1' });
+
+  assert.equal(session.state, SessionState.NOT_FOUND);
+  assert.equal(session.currentTransactionId, 'TX1');
+});
+
 test('Session permite nova alegação chegar enquanto outra ainda está pendente (correção pós-Fase 4)', () => {
   const session = new Session({ contextKey: 'chat1' });
   session.transitionTo(SessionState.AWAITING_VERIFICATION, { currentTransactionId: 'TX1' });

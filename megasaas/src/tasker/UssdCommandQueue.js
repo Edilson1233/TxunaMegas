@@ -37,9 +37,22 @@ export class UssdCommandQueue {
     this.#maxAttempts = Number.isInteger(maxAttempts) && maxAttempts > 0 ? maxAttempts : DEFAULT_MAX_ATTEMPTS;
   }
 
-  async enqueue({ transactionId, contextKey, destinationNumber, amount = null, paymentAmount = null, deliveryAmount = null }) {
+  async enqueue({
+    transactionId,
+    contextKey,
+    destinationNumber,
+    amount = null,
+    paymentAmount = null,
+    deliveryAmount = null,
+    orderId = null,
+    paymentId = null,
+    coreCommandId = null,
+  }) {
     const command = new UssdCommand({
       id: randomUUID(),
+      coreCommandId,
+      orderId,
+      paymentId,
       transactionId,
       contextKey,
       destinationNumber,

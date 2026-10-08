@@ -290,6 +290,8 @@ export class PendingTransactionManager {
       return PaymentVerification.verified(
         new Transaction({
           tenantId: decision.tenantId ?? originalTransaction.tenantId,
+          orderId: decision.orderId ?? originalTransaction.orderId,
+          paymentId: decision.paymentId ?? originalTransaction.paymentId,
           provider: originalTransaction.provider,
           type: originalTransaction.type,
           externalTransactionId: transactionId,

@@ -3,7 +3,7 @@ import IORedis from 'ioredis';
 import { UssdCommand } from './UssdCommand.js';
 import { UssdCommandStore } from './UssdCommandStore.js';
 
-const DEFAULT_QUEUE_NAME = 'megasaas:ussd-commands';
+const DEFAULT_QUEUE_NAME = 'megasaas-ussd-commands';
 const JOB_NAME = 'ussd-command';
 
 /**
@@ -87,6 +87,9 @@ export class BullMqUssdCommandStore extends UssdCommandStore {
 function serializeCommand(command) {
   return {
     id: command.id,
+    coreCommandId: command.coreCommandId,
+    orderId: command.orderId,
+    paymentId: command.paymentId,
     transactionId: command.transactionId,
     contextKey: command.contextKey,
     destinationNumber: command.destinationNumber,

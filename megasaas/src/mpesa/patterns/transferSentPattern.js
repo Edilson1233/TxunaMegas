@@ -14,7 +14,7 @@ import { parseMpesaDateTime } from '../parseMpesaDateTime.js';
  *  de M-Pesa para M-Pesa. Em caso de duvida, liga 100."
  */
 const TRANSFER_SENT_REGEX =
-  /Transferiste\s+([\d]+(?:[.,]\d{1,2})?)\s*MT\s+e\s+a\s+taxa\s+foi\s+de\s+([\d]+(?:[.,]\d{1,2})?)\s*MT\s+para\s+(\d{6,15})\s*-\s*(.+?)\s+aos\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+as\s+(\d{1,2}:\d{2}\s*[AP]M)/i;
+  /Transferiste\s+([\d]+(?:[.,]\d{1,2})?)\s*MT\s+e\s+a\s+taxa\s+foi\s+de\s+([\d]+(?:[.,]\d{1,2})?)\s*MT\s+para\s+(\d{6,15})(?:\s*-\s*(.+?))?\s+aos\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+as\s+(\d{1,2}:\d{2}\s*[AP]M)/i;
 
 export const transferSentPattern = {
   type: MpesaMessageType.TRANSFER_SENT,
@@ -33,7 +33,7 @@ export const transferSentPattern = {
       amount: parseAmount(amountRaw),
       fee: parseAmount(feeRaw),
       counterpartyPhone: phone,
-      counterpartyName: name.trim(),
+      counterpartyName: name?.trim() || null,
       occurredAt: parseMpesaDateTime(dateStr, timeStr),
     };
   },

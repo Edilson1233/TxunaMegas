@@ -62,6 +62,25 @@ test('Transferiste — saldo ausente na SMS + número de destino anexado (caso r
   assert.equal(result.destinationNumber, '859253929');
 });
 
+test('Transferiste — SMS sem nome da contraparte antes de "aos" (caso real reportado)', () => {
+  const sms =
+    'Confirmado DJ65LU615LV. Transferiste 15.00MT e a taxa foi de 0.00MT para 859253929 ' +
+    'aos 6/10/26 as 12:35 AM. O teu novo saldo M-Pesa e de 0.18MT. E SEM TAXAS as ' +
+    'transferencias de M-Pesa para M-Pesa. Em caso de duvida,liga 100. 859253929';
+
+  const result = MpesaParser.parse(sms);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.type, MpesaMessageType.TRANSFER_SENT);
+  assert.equal(result.transactionId, 'DJ65LU615LV');
+  assert.equal(result.amount, 15);
+  assert.equal(result.fee, 0);
+  assert.equal(result.counterpartyPhone, '859253929');
+  assert.equal(result.counterpartyName, null);
+  assert.equal(result.balance, 0.18);
+  assert.equal(result.destinationNumber, '859253929');
+});
+
 test('Texto sem relação com M-Pesa não é reconhecido, mas não lança erro', () => {
   const result = MpesaParser.parse('na boa');
 

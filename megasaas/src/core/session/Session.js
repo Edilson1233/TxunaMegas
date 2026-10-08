@@ -17,7 +17,11 @@ import { SessionState } from './SessionState.js';
 // indica o número de destino no texto — o bot pede-o e a sessão fica à
 // espera dessa resposta antes de avançar para AWAITING_VERIFICATION.
 const ALLOWED_TRANSITIONS = Object.freeze({
-  [SessionState.IDLE]: [SessionState.AWAITING_VERIFICATION, SessionState.AWAITING_DESTINATION_NUMBER],
+  [SessionState.IDLE]: [
+    SessionState.AWAITING_VERIFICATION,
+    SessionState.AWAITING_DESTINATION_NUMBER,
+    SessionState.NOT_FOUND,
+  ],
   [SessionState.AWAITING_DESTINATION_NUMBER]: [
     SessionState.AWAITING_DESTINATION_NUMBER,
     SessionState.AWAITING_VERIFICATION,

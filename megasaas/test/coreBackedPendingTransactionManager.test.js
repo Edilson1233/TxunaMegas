@@ -64,6 +64,8 @@ test('PendingTransactionManager emite CLAIM_VERIFIED com contextKey devolvido pe
         return {
           decision: 'VERIFIED',
           tenantId: '11111111-1111-1111-1111-111111111111',
+          orderId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          paymentId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
           contextKey: 'chat1',
           externalTransactionId: 'DFT1KNIBSBZ',
           amount: 210,
@@ -84,6 +86,8 @@ test('PendingTransactionManager emite CLAIM_VERIFIED com contextKey devolvido pe
   assert.equal(result.transaction.source, TransactionSource.TASKER_SMS);
   assert.equal(result.transaction.amount, 210);
   assert.equal(result.transaction.deliveryAmount, 600);
+  assert.equal(result.transaction.orderId, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  assert.equal(result.transaction.paymentId, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
   assert.equal(result.transaction.destinationNumber, '859253929');
   assert.equal(emitted.contextKey, 'chat1');
   assert.equal(emitted.verification.transaction.externalTransactionId, 'DFT1KNIBSBZ');

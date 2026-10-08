@@ -29,6 +29,8 @@ export class PurchaseFlowCoordinator {
   #logger;
   #whatsAppProvider;
   #priceTable;
+  #corePaymentClient;
+  #taskerDeviceId;
   // Alegações que já reconhecemos como SMS M-Pesa mas sem número de
   // destino indicado — à espera da resposta do cliente com esse número.
   // Vive só aqui (não no Session, que é agnóstico de WhatsApp) porque é
@@ -44,6 +46,8 @@ export class PurchaseFlowCoordinator {
     logger,
     whatsAppProvider = null,
     priceTable = null,
+    corePaymentClient = null,
+    taskerDeviceId = null,
   }) {
     this.#eventBus = eventBus;
     this.#sessionManager = sessionManager;
@@ -53,6 +57,8 @@ export class PurchaseFlowCoordinator {
     this.#logger = logger;
     this.#whatsAppProvider = whatsAppProvider;
     this.#priceTable = priceTable;
+    this.#corePaymentClient = corePaymentClient;
+    this.#taskerDeviceId = taskerDeviceId;
   }
 
   /** Regista os listeners no EventBus. Chamar uma vez, no arranque. */
@@ -236,6 +242,22 @@ export class PurchaseFlowCoordinator {
     this.#logger.info({ contextKey, state: session.state }, '[PurchaseFlowCoordinator] verificado — a acionar USSD');
 
     const deliveryAmount = this.#resolveDeliveryAmount(transaction);
+    let coreCommand;
+    try {
+      coreCommand = await this.#registerCoreUssdCommand({
+        transaction,
+        destinationNumber: transaction.destinationNumber,
+        deliveryAmount,
+      });
+    } catch {
+      const failedSession = await this.#sessionManager.transition(contextKey, SessionState.NOT_FOUND);
+      this.#logger.warn(
+        { contextKey, state: failedSession.state, transactionId: transaction.externalTransactionId },
+        '[PurchaseFlowCoordinator] comando USSD bloqueado porque o Core nao registou auditoria'
+      );
+      await this.#reply(contextKey, replyMessages.ussdFailed({ transactionId: transaction.externalTransactionId }));
+      return;
+    }
 
     if (this.#ussdCommandQueue) {
       await this.#ussdCommandQueue.enqueue({
@@ -244,6 +266,9 @@ export class PurchaseFlowCoordinator {
         destinationNumber: transaction.destinationNumber,
         paymentAmount: transaction.amount,
         deliveryAmount,
+        orderId: transaction.orderId,
+        paymentId: transaction.paymentId,
+        coreCommandId: coreCommand?.commandId ?? null,
       });
     }
     // Sem mensagem extra aqui — "claimRegistered" já avisou o cliente que
@@ -261,6 +286,27 @@ export class PurchaseFlowCoordinator {
       '[PurchaseFlowCoordinator] sem tabela de precos configurada; a usar valor pago como quantidade USSD'
     );
     return transaction.amount;
+  }
+
+  async #registerCoreUssdCommand({ transaction, destinationNumber, deliveryAmount }) {
+    if (!this.#corePaymentClient || !this.#taskerDeviceId || !transaction.orderId || !transaction.paymentId) {
+      return null;
+    }
+
+    try {
+      return await this.#corePaymentClient.registerUssdCommand({
+        transaction,
+        deviceId: this.#taskerDeviceId,
+        destinationNumber,
+        amount: deliveryAmount,
+      });
+    } catch (err) {
+      this.#logger.error(
+        { err, transactionId: transaction.externalTransactionId, orderId: transaction.orderId, paymentId: transaction.paymentId },
+        '[PurchaseFlowCoordinator] falha ao auditar comando USSD no Core'
+      );
+      throw err;
+    }
   }
 
   async #onClaimExpired({ verification, contextKey }) {

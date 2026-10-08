@@ -1,5 +1,5 @@
 import express from 'express';
-import { verifyTaskerToken } from './taskerAuth.js';
+import { verifyTaskerCredentials } from './taskerAuth.js';
 import { RateLimiter } from './RateLimiter.js';
 import { handleSmsReport, handleNextCommand, handleCommandAck } from './taskerHandlers.js';
 
@@ -18,6 +18,7 @@ export function createTaskerServer({
   logger,
   apiKey,
   deviceId = null,
+  deviceTokens = new Map(),
 }) {
   const app = express();
   app.use(express.json());
@@ -25,54 +26,84 @@ export function createTaskerServer({
   const rateLimiter = new RateLimiter({ maxRequests: 30, windowMs: 60_000 });
 
   app.use((req, res, next) => {
-    if (!verifyTaskerToken(req.headers.authorization, apiKey)) {
+    const requestDeviceId = resolveDeviceId(req, deviceId);
+    if (!verifyTaskerCredentials({
+      authorizationHeader: req.headers.authorization,
+      expectedToken: apiKey,
+      deviceId: requestDeviceId,
+      deviceTokens,
+    })) {
       return res.status(401).json({ status: 'REJECTED', reason: 'INVALID_AUTH' });
     }
-    if (!rateLimiter.allow(req.headers.authorization)) {
+    req.taskerDeviceId = requestDeviceId;
+    if (!rateLimiter.allow(`${requestDeviceId ?? 'global'}:${req.headers.authorization}`)) {
       return res.status(429).json({ status: 'REJECTED', reason: 'RATE_LIMITED' });
     }
     next();
   });
 
   app.post('/api/v1/tasker/sms', async (req, res) => {
-    const { httpStatus, body } = await handleSmsReport({
-      body: req.body,
-      tenantContext,
-      pendingTransactionManager,
-      ussdCommandQueue,
-      deviceId,
-    });
-    logger.info({ httpStatus, transactionId: req.body?.transactionId }, '[TaskerServer] POST /sms');
-    res.status(httpStatus).json(body);
+    try {
+      const { httpStatus, body } = await handleSmsReport({
+        body: req.body,
+        tenantContext,
+        pendingTransactionManager,
+        ussdCommandQueue,
+        deviceId: req.taskerDeviceId,
+      });
+      logger.info({ httpStatus, transactionId: req.body?.transactionId }, '[TaskerServer] POST /sms');
+      res.status(httpStatus).json(body);
+    } catch (err) {
+      logger.error({ err, transactionId: req.body?.transactionId }, '[TaskerServer] POST /sms falhou');
+      res.status(502).json({ status: 'REJECTED', reason: 'UPSTREAM_ERROR' });
+    }
   });
 
   app.get('/api/v1/tasker/commands/next', async (req, res) => {
-    const { httpStatus, body } = await handleNextCommand({ ussdCommandQueue });
-    if (httpStatus === 204) return res.status(204).end();
-    res.status(httpStatus).json(body);
+    try {
+      const { httpStatus, body } = await handleNextCommand({ ussdCommandQueue });
+      if (httpStatus === 204) return res.status(204).end();
+      res.status(httpStatus).json(body);
+    } catch (err) {
+      logger.error({ err }, '[TaskerServer] GET /commands/next falhou');
+      res.status(502).json({ status: 'REJECTED', reason: 'UPSTREAM_ERROR' });
+    }
   });
 
   const handleAckRequest = async (req, res) => {
-    const { httpStatus, body } = await handleCommandAck({
-      commandId: req.params.commandId,
-      body: req.body,
-      query: req.query,
-      ussdCommandQueue,
-    });
-    logger.info(
-      {
+    try {
+      const { httpStatus, body } = await handleCommandAck({
         commandId: req.params.commandId,
-        success: req.body?.success ?? req.query?.success,
-        httpStatus,
-        method: req.method,
-      },
-      '[TaskerServer] /commands/:id/ack'
-    );
-    res.status(httpStatus).json(body);
+        body: req.body,
+        query: req.query,
+        ussdCommandQueue,
+      });
+      logger.info(
+        {
+          commandId: req.params.commandId,
+          success: req.body?.success ?? req.query?.success,
+          httpStatus,
+          method: req.method,
+        },
+        '[TaskerServer] /commands/:id/ack'
+      );
+      res.status(httpStatus).json(body);
+    } catch (err) {
+      logger.error({ err, commandId: req.params.commandId }, '[TaskerServer] /commands/:id/ack falhou');
+      res.status(502).json({ status: 'REJECTED', reason: 'UPSTREAM_ERROR' });
+    }
   };
 
   app.post('/api/v1/tasker/commands/:commandId/ack', handleAckRequest);
   app.get('/api/v1/tasker/commands/:commandId/ack', handleAckRequest);
 
   return app;
+}
+
+function resolveDeviceId(req, fallbackDeviceId) {
+  return req.headers['x-tasker-device-id']
+    ?? req.body?.deviceId
+    ?? req.query?.deviceId
+    ?? fallbackDeviceId
+    ?? null;
 }
